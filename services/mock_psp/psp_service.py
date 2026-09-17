@@ -4,11 +4,15 @@ import httpx
 import time
 import os
 import sys
+import tempfile
+import subprocess
 from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import supabase_db
@@ -53,6 +57,17 @@ class InitiateRequest(BaseModel):
     currency: str = "INR"
 
 
+class TTSRequest(BaseModel):
+    text: str
+
+
+PIPER_VOICE = os.getenv("PIPER_VOICE", "en_US-amy-medium")
+PIPER_DATA_DIR = os.getenv(
+    "PIPER_DATA_DIR",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "piper")),
+)
+
+
 # ---------- Helpers ----------
 
 def generate_txn_id() -> str:
@@ -80,6 +95,59 @@ def update_velocity(vpa: str, amount: float):
         rec["date"] = today
         rec["total"] = 0.0
     rec["total"] = rec.get("total", 0.0) + amount
+
+
+# ---------- Local assistant voice (open-source Piper) ----------
+
+def _remove_file(path: str):
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
+def _render_assistant_voice(text: str, output_path: str):
+    """Render the default assistant voice locally with Piper TTS."""
+    subprocess.run(
+        ["piper", "--model", PIPER_VOICE, "--data-dir", PIPER_DATA_DIR, "--output_file", output_path],
+        input=text,
+        text=True,
+        check=True,
+        capture_output=True,
+        timeout=90,
+    )
+
+
+@app.post("/assistant/voice")
+async def assistant_voice(req: TTSRequest):
+    """Generate a WAV using the app's default feminine Piper voice."""
+    text = " ".join(req.text.split())
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    if len(text) > 500:
+        raise HTTPException(status_code=400, detail="Prompt is too long")
+
+    output = tempfile.NamedTemporaryFile(prefix="upi-assistant-", suffix=".wav", delete=False)
+    output.close()
+    try:
+        await asyncio.to_thread(_render_assistant_voice, text, output.name)
+    except FileNotFoundError:
+        _remove_file(output.name)
+        raise HTTPException(status_code=503, detail="Local voice is installing. Restart start.sh and try again.")
+    except subprocess.TimeoutExpired:
+        _remove_file(output.name)
+        raise HTTPException(status_code=504, detail="Local voice took too long to respond")
+    except subprocess.CalledProcessError as exc:
+        _remove_file(output.name)
+        detail = (exc.stderr or "Piper voice generation failed").strip()
+        raise HTTPException(status_code=503, detail=detail[-300:])
+
+    return FileResponse(
+        output.name,
+        media_type="audio/wav",
+        filename="assistant.wav",
+        background=BackgroundTask(_remove_file, output.name),
+    )
 
 
 # ---------- Background payment processor ----------

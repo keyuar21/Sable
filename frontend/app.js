@@ -33,10 +33,6 @@ const state = {
 function startAfterLogin() {
   refreshBalance();
 
-  // Health check architecture sidebar every 5s
-  checkServiceHealth();
-  setInterval(checkServiceHealth, 5_000);
-
   // Settlement countdown every 2s
   updateSettlementCountdown();
   setInterval(async () => {
@@ -916,52 +912,6 @@ async function updateSettlementCountdown() {
     document.getElementById('settlement-hero-timer').textContent    = fmt;
     document.getElementById('settlement-mini-sub').textContent      = `Cycle #${data.cycle_number} — every ${data.interval_secs}s`;
   } catch { /* services not up yet */ }
-}
-
-// ── Architecture panel health check ──────────────────────────────────────────
-async function checkServiceHealth() {
-  const services = [
-    { id: 'arch-psp',    url: `${API.psp}/health`       },
-    { id: 'arch-switch', url: `${API.switch}/health`    },
-    { id: 'arch-payer',  url: `${API.payerBank}/health` },
-    { id: 'arch-payee',  url: `${API.payeeBank}/health` },
-  ];
-
-  await Promise.allSettled(services.map(async ({ id, url }) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
-      el.classList.toggle('alive', res.ok);
-      el.classList.toggle('dead',  !res.ok);
-    } catch {
-      el.classList.remove('alive');
-      el.classList.add('dead');
-    }
-  }));
-
-  // Check Supabase DB status
-  try {
-    const sbRes = await fetch(`${API.psp}/supabase-status`, { signal: AbortSignal.timeout(2000) });
-    const el = document.getElementById('arch-supabase');
-    const textEl = document.getElementById('supabase-status-text');
-    if (sbRes.ok && el && textEl) {
-      const data = await sbRes.json();
-      if (data.health && data.health.tables_ready) {
-        el.className = 'arch-service alive';
-        textEl.textContent = 'PostgreSQL Tables Live ✓';
-      } else if (data.health && data.health.status === 'schema_pending') {
-        el.className = 'arch-service pending';
-        textEl.innerHTML = '<span style="color:var(--amber);">Tables pending (Run schema.sql)</span>';
-      } else {
-        el.className = 'arch-service dead';
-        textEl.textContent = 'Supabase unreachable';
-      }
-    }
-  } catch {
-    const el = document.getElementById('arch-supabase');
-    if (el) el.className = 'arch-service dead';
-  }
 }
 
 // ── System reset ──────────────────────────────────────────────────────────────

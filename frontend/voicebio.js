@@ -46,6 +46,8 @@ function isNegativeSpeech(text) {
 /** Prefer a cute / soft female TTS voice when the OS provides one. */
 let _cachedCuteVoice = null;
 let _voicesReady = false;
+let _assistantAudio = null;
+const LOCAL_TTS_API = 'http://localhost:5001/assistant/voice';
 
 function _pickCuteGirlVoice() {
   if (_cachedCuteVoice) return _cachedCuteVoice;
@@ -54,11 +56,11 @@ function _pickCuteGirlVoice() {
 
   const prefer = [
     // macOS / iOS
-    'Samantha', 'Karen', 'Moira', 'Tessa', 'Fiona', 'Victoria', 'Kathy',
+    'Samantha', 'Ava', 'Nicky', 'Siri', 'Karen', 'Moira', 'Tessa', 'Fiona', 'Victoria', 'Kathy',
     // Google / Chrome
     'Google UK English Female', 'Google US English', 'Google हिन्दी',
     // Windows
-    'Microsoft Zira', 'Microsoft Aria', 'Microsoft Jenny', 'Microsoft Neerja',
+    'Microsoft Zira', 'Microsoft Aria', 'Microsoft Jenny', 'Microsoft Neerja', 'Microsoft Sonia',
     // India-friendly
     'Raveena', 'Aditi', 'Neerja',
   ];
@@ -102,9 +104,37 @@ function _ensureVoicesLoaded() {
 
 /** Speak a prompt with a cute girl TTS voice (AI confirmation). */
 async function speakPrompt(text) {
+  // Piper gives every user the same default assistant voice. Browser TTS is
+  // retained only as an offline fallback while Piper is being installed.
+  try {
+    if (_assistantAudio) {
+      _assistantAudio.pause();
+      URL.revokeObjectURL(_assistantAudio.src);
+    }
+    const response = await fetch(LOCAL_TTS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (response.ok) {
+      const audio = new Audio(URL.createObjectURL(await response.blob()));
+      _assistantAudio = audio;
+      await new Promise((resolve, reject) => {
+        audio.onended = () => { URL.revokeObjectURL(audio.src); resolve(true); };
+        audio.onerror = reject;
+        audio.play().catch(reject);
+      });
+      return true;
+    }
+  } catch (err) {
+    console.info('Local Piper voice unavailable; using browser voice.', err);
+  }
+
   if (!window.speechSynthesis) return false;
   await _ensureVoicesLoaded();
   window.speechSynthesis.cancel();
+  // Chrome can retain a paused or stale speech queue after a page reload.
+  window.speechSynthesis.resume();
 
   return new Promise((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
@@ -116,16 +146,21 @@ async function speakPrompt(text) {
       u.lang = 'en-US';
     }
     // Softer, brighter “cute” delivery
-    u.rate = 0.98;
-    u.pitch = 1.35;
+    u.rate = 0.96;
+    u.pitch = 1.28;
     u.volume = 1.0;
     u.onend = () => resolve(true);
-    u.onerror = () => resolve(false);
+    u.onerror = () => {
+      // A second resume handles the occasional Chrome queue interruption.
+      try { window.speechSynthesis.resume(); } catch {}
+      resolve(false);
+    };
     window.speechSynthesis.speak(u);
   });
 }
 
 function stopSpeaking() {
+  try { _assistantAudio?.pause(); } catch {}
   try { window.speechSynthesis?.cancel(); } catch {}
 }
 

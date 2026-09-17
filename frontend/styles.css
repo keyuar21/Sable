@@ -2,7 +2,7 @@
    Voice UPI Simulator — GPay/Slice Style Dark Mobile UI
    ───────────────────────────────────────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Manrope:wght@400;500;600;700;800&display=swap');
 
 /* ── Reset & Root ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1758,6 +1758,41 @@ html, body {
   color: var(--text-2);
   margin-top: 2px;
 }
+
+/* ── Premium graphite theme ─────────────────────────────────────────────── */
+:root {
+  --bg:#090909; --surface:#101010; --surface2:#181818; --card:#191919;
+  --card-hover:#232323; --border:rgba(255,255,255,.09); --border2:rgba(255,255,255,.16);
+  --blue:#e84743; --blue-dim:rgba(232,71,67,.14); --blue-glow:rgba(232,71,67,.3);
+  --green:#8cd68b; --green-dim:rgba(140,214,139,.12); --green-glow:rgba(140,214,139,.35);
+  --red:#ee6b68; --amber:#e6c16d; --text:#f5f2ed; --text-2:rgba(245,242,237,.66);
+  --text-3:rgba(245,242,237,.40); --font:'DM Sans', system-ui, sans-serif;
+}
+.desktop-bg { background:radial-gradient(ellipse 50% 65% at 50% 45%,#252525 0%,#090909 68%); gap:0; }
+.phone-frame { background:#101010; border-radius:48px; box-shadow:0 0 0 1px rgba(255,255,255,.14),0 0 70px rgba(0,0,0,.55),0 40px 120px #000,inset 0 1px 0 rgba(255,255,255,.12); }
+.app-header { padding:10px 22px 16px; }
+.app-logo { gap:5px; font-family:'Manrope',sans-serif; font-size:21px; font-weight:800; letter-spacing:-1.5px; }
+.logo-icon { width:24px; height:24px; background:#e84743; border-radius:8px; gap:2px; box-shadow:none; }
+.logo-icon span { width:3px; border-radius:3px; background:#090909; transform:rotate(34deg); }
+.logo-icon span:nth-child(1) { height:8px; }.logo-icon span:nth-child(2) { height:13px; }.logo-icon span:nth-child(3) { height:18px; }
+.logo-dot { color:var(--blue); }
+.header-avatar { background:#e7e1d7; color:#141414; border-color:#302f2e; }
+.home-welcome { display:flex; align-items:flex-end; justify-content:space-between; padding:4px 22px 20px; }
+.home-eyebrow { font-size:10px; letter-spacing:1.6px; color:var(--text-3); font-weight:700; margin-bottom:8px; }
+.home-welcome h1 { font-family:'Manrope',sans-serif; font-size:25px; line-height:1.12; letter-spacing:-1.2px; font-weight:700; }
+.home-welcome h1 em { color:#a8a8a8; font-style:normal; font-weight:500; }
+.home-security { font-size:9px; letter-spacing:1px; color:#9c9c9c; padding-bottom:4px; white-space:nowrap; }
+.home-security span { display:inline-block; width:6px; height:6px; background:#8cd68b; border-radius:50%; box-shadow:0 0 9px #8cd68b; margin-right:4px; }
+.balance-card { margin:0 18px 18px; padding:25px 24px; background:linear-gradient(128deg,#2b2a29 0%,#1a1a1a 64%,#111 100%); border-radius:24px; border-color:rgba(255,255,255,.12); box-shadow:0 16px 38px rgba(0,0,0,.28); }
+.balance-card::before { background:radial-gradient(circle,rgba(232,71,67,.16) 0%,transparent 70%); }.balance-card::after { background:radial-gradient(circle,rgba(255,255,255,.07) 0%,transparent 70%); }
+.balance-label { letter-spacing:1px; }.quick-actions { gap:10px; padding:0 18px 25px; }.action-icon { background:#1b1b1b; border-radius:18px; }
+.action-btn.voice-main .action-icon { background:#e84743; box-shadow:0 8px 20px rgba(232,71,67,.25); }.action-label { font-size:11px; }
+.section-header { padding:0 22px 12px; }.section-title { font-family:'Manrope',sans-serif; font-weight:700; letter-spacing:-.3px; }.section-link { color:#e6c16d; font-size:12px; font-weight:600; }
+.merchant-chips { gap:12px; padding:0 18px 25px; }.merchant-chip-icon { width:54px; height:54px; background:#1b1b1b; border-radius:18px; }
+.txn-item { background:#171717; border-radius:16px; }.settlement-mini { background:#171717; border-radius:16px; margin:18px; }
+.bottom-nav { background:rgba(16,16,16,.96); }.nav-item.active { color:var(--blue); }
+.pay-now-btn,.primary-btn { background:#e84743; box-shadow:0 10px 24px rgba(232,71,67,.22); }.pay-now-btn:hover,.primary-btn:hover:not(:disabled) { background:#f0534f; }
+.voice-mic-btn { background:#e84743; }.voice-transcript { color:#f5f2ed; background:#1b1b1b; border-color:var(--border); }
 
 /* Mobile responsive */
 @media (max-width: 800px) {

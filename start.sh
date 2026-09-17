@@ -31,6 +31,13 @@ else
     PY="python3"
 fi
 
+# The macOS framework Python can lack the system CA bundle. Use certifi so
+# Piper's first-run voice-model download remains certificate-verified.
+PIPER_CA_FILE="$($PY -c 'import certifi; print(certifi.where())' 2>/dev/null || true)"
+if [ -n "$PIPER_CA_FILE" ]; then
+    export SSL_CERT_FILE="$PIPER_CA_FILE"
+fi
+
 # ── Load Supabase .env if present ─────────────────────────────────────────────
 if [ -f "$SCRIPT_DIR/.env" ]; then
     export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
@@ -40,8 +47,17 @@ fi
 # ── Install Python deps ───────────────────────────────────────────────────────
 echo -e "${GREEN}[1/6] Installing Python dependencies...${NC}"
 # Voice biometrics: Resemblyzer (speaker ID) + onnxruntime (AASIST anti-spoof)
-$PY -m pip install -q fastapi "uvicorn[standard]" httpx pydantic webauthn bcrypt python-multipart numpy onnxruntime librosa soundfile webrtcvad-wheels 2>/dev/null || true
+$PY -m pip install -q fastapi "uvicorn[standard]" httpx pydantic webauthn bcrypt python-multipart numpy onnxruntime librosa soundfile webrtcvad-wheels piper-tts 2>/dev/null || true
 $PY -m pip install -q --no-deps resemblyzer 2>/dev/null || true
+
+# ── Local open-source assistant voice ────────────────────────────────────────
+# Piper is used so every user hears the same default assistant voice, instead
+# of depending on a browser or operating-system voice being installed.
+PIPER_VOICE_DIR="$SCRIPT_DIR/models/piper"
+mkdir -p "$PIPER_VOICE_DIR"
+echo -e "${GREEN}Preparing local assistant voice (first run downloads once)...${NC}"
+$PY -m piper.download_voices --download-dir "$PIPER_VOICE_DIR" en_US-amy-medium || \
+  echo -e "${YELLOW}⚠ Piper voice download failed — browser voice fallback will be used.${NC}"
 
 # ── Kill any lingering services on our ports ──────────────────────────────────
 echo -e "${GREEN}[2/6] Clearing ports 5001-5005, 3000...${NC}"
@@ -79,7 +95,7 @@ ${PY} "$SCRIPT_DIR/scripts/init_pins.py" || echo "PIN seeding script failed (con
 sleep 2
 
 echo -e "${GREEN}[5/6] Starting Mock PSP            → http://localhost:5001${NC}"
-PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn mock_psp.psp_service:app --port 5001 --log-level info > /tmp/psp.log 2>&1 &
+PIPER_DATA_DIR="$PIPER_VOICE_DIR" PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn mock_psp.psp_service:app --port 5001 --log-level info > /tmp/psp.log 2>&1 &
 PSP_PID=$!
 
 # ── Start frontend server ─────────────────────────────────────────────────────

@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>UPI Sim — Voice Payment Simulator</title>
-  <meta name="description" content="A technically honest simulation of the full UPI payment flow with voice interface — every hop from PSP to NPCI Switch to Payer Bank to Payee Bank, including deferred settlement.">
-  <link rel="stylesheet" href="styles.css">
+  <title>UPI Sim — Voice Payments</title>
+  <meta name="description" content="A polished voice-first UPI payment simulator.">
+  <link rel="stylesheet" href="styles.css?v=cred-dark-1">
 </head>
 <body>
 
@@ -43,8 +43,8 @@
     <!-- App Header -->
     <div class="app-header">
       <div class="app-logo">
-        <div class="logo-icon">💸</div>
-        UPI<span style="color:var(--blue)">Sim</span>
+        <div class="logo-icon"><span></span><span></span><span></span></div>
+        <span>upi</span><span class="logo-dot">.</span>
       </div>
       <div class="header-avatar" id="header-avatar" title="you@mockbank">K</div>
     </div>
@@ -247,6 +247,14 @@
 
       <!-- ═══════════════════════════════ HOME SCREEN ════════════════════ -->
       <div class="screen active" id="screen-home">
+
+        <div class="home-welcome">
+          <div>
+            <p class="home-eyebrow">GOOD EVENING</p>
+            <h1>Make every payment<br><em>feel effortless.</em></h1>
+          </div>
+          <div class="home-security"><span></span> SECURED</div>
+        </div>
 
         <!-- Balance Card -->
         <div class="balance-card">
@@ -665,76 +673,10 @@
 
   </div><!-- /phone-frame -->
 
-  <!-- ── Architecture Sidebar (desktop) ──────────────────────────────────── -->
-  <div class="arch-panel">
-    <div>
-      <div class="arch-title">Service Architecture</div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Live health status</div>
-    </div>
-
-    <div class="arch-service" id="arch-psp">
-      <div class="arch-svc-dot"></div>
-      <div class="arch-svc-info">
-        <div class="arch-svc-name">Mock PSP</div>
-        <div class="arch-svc-port">localhost:5001 — Orchestrator</div>
-      </div>
-    </div>
-
-    <div class="arch-arrow">↓</div>
-
-    <div class="arch-service" id="arch-switch">
-      <div class="arch-svc-dot"></div>
-      <div class="arch-svc-info">
-        <div class="arch-svc-name">Mock NPCI Switch</div>
-        <div class="arch-svc-port">localhost:5002 — Router (no money)</div>
-      </div>
-    </div>
-
-    <div class="arch-arrow" style="display:flex;gap:40px;justify-content:center;">
-      <span>↙</span><span>↘</span>
-    </div>
-
-    <div style="display:flex;gap:10px;">
-      <div class="arch-service" id="arch-payer" style="flex:1;">
-        <div class="arch-svc-dot"></div>
-        <div class="arch-svc-info">
-          <div class="arch-svc-name">Payer Bank</div>
-          <div class="arch-svc-port">:5003 — Debit</div>
-        </div>
-      </div>
-      <div class="arch-service" id="arch-payee" style="flex:1;">
-        <div class="arch-svc-dot"></div>
-        <div class="arch-svc-info">
-          <div class="arch-svc-name">Payee Bank</div>
-          <div class="arch-svc-port">:5004 — Credit</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="arch-arrow">↓</div>
-
-    <div class="arch-service" id="arch-supabase">
-      <div class="arch-svc-dot"></div>
-      <div class="arch-svc-info">
-        <div class="arch-svc-name">Supabase PostgreSQL</div>
-        <div class="arch-svc-port" id="supabase-status-text">sanozvdqvezownhvhpdq</div>
-      </div>
-    </div>
-
-    <div class="arch-legend">
-      <strong style="color:var(--text-2);">UPI Flow</strong><br>
-      1. Login → Voice ID enroll (mandatory)<br>
-      2. Voice pay → AI confirm → speaker match<br>
-      3. PSP → Switch → Payer debit → Payee credit<br>
-      4. Batch settlement every 30s<br><br>
-      <span style="color:var(--amber);">⚠ Simulation only — no real money</span>
-    </div>
-  </div><!-- /arch-panel -->
-
 </div><!-- /desktop-bg -->
 
-<script src="webauthn.js"></script>
-<script src="voicebio.js"></script>
-<script src="app.js"></script>
+<script src="webauthn.js?v=1"></script>
+<script src="voicebio.js?v=cute-voice-2"></script>
+<script src="app.js?v=cred-dark-1"></script>
 </body>
 </html>
