@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>UPI Sim — Voice Payment Simulator</title>
+  <meta name="description" content="A technically honest simulation of the full UPI payment flow with voice interface — every hop from PSP to NPCI Switch to Payer Bank to Payee Bank, including deferred settlement.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="desktop-bg">
+
+  <!-- ── Phone Frame ──────────────────────────────────────────────────────── -->
+  <div class="phone-frame">
+
+    <!-- Dynamic Island -->
+    <div class="phone-notch">
+      <div class="notch-cam"></div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span class="status-time" id="status-time">9:41</span>
+      <div class="status-icons">
+        <svg width="16" height="12" fill="currentColor" viewBox="0 0 16 12">
+          <rect x="0" y="6" width="3" height="6" rx="1" opacity=".4"/>
+          <rect x="4" y="4" width="3" height="8" rx="1" opacity=".6"/>
+          <rect x="8" y="2" width="3" height="10" rx="1" opacity=".8"/>
+          <rect x="12" y="0" width="3" height="12" rx="1"/>
+        </svg>
+        <svg width="16" height="12" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M1.5 8.5a15 15 0 0 1 21 0M5 12a11 11 0 0 1 14 0M8.5 15.5a7 7 0 0 1 7 0M12 19h.01" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+        <svg width="25" height="12" fill="currentColor" viewBox="0 0 25 12">
+          <rect x="0" y="1" width="21" height="10" rx="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <rect x="22" y="4" width="3" height="4" rx="1.5"/>
+          <rect x="1.5" y="2.5" width="16" height="7" rx="1.5" fill="currentColor"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- App Header -->
+    <div class="app-header">
+      <div class="app-logo">
+        <div class="logo-icon">💸</div>
+        UPI<span style="color:var(--blue)">Sim</span>
+      </div>
+      <div class="header-avatar" id="header-avatar" title="you@mockbank">K</div>
+    </div>
+
+    <!-- Screen Container -->
+    <div class="screen-container">
+
+      <!-- ══════════════════════════════ LOGIN SCREEN ════════════════════ -->
+      <div class="screen" id="screen-login">
+        <div class="login-card">
+          <div class="back-header">
+            <span class="back-title">Sign in</span>
+          </div>
+          <div style="padding:20px;">
+            <label for="login-select">Choose Demo User</label>
+            <select id="login-select" style="width:100%;padding:8px;margin:8px 0;">
+              <option value="you@mockbank">you@mockbank — Keyur Arbhelonde</option>
+              <option value="priya@mockbank">priya@mockbank — Priya Sharma</option>
+              <option value="rahul@mockbank">rahul@mockbank — Rahul Mehta</option>
+            </select>
+
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+              <input id="login-pin" type="password" placeholder="Enter 4-digit PIN" maxlength="6" style="flex:1;padding:8px;" />
+              <button id="login-pin-btn" class="pay-now-btn">PIN</button>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button id="login-biometric-btn" class="pay-now-btn">Use Biometric</button>
+              <button id="login-enroll-btn" class="pay-now-btn enroll">Enroll Biometric</button>
+            </div>
+
+            <div style="margin-top:12px;color:var(--text-3);font-size:13px;">Tip: enroll biometric first, then use "Use Biometric" to sign in. Demo PIN is 1234.</div>
+
+            <div class="login-divider"><span>OR</span></div>
+
+            <button id="btn-start-onboarding" class="onboard-action-btn" type="button">
+              <span class="onboard-icon">🏦</span>
+              <div class="onboard-text">
+                <div class="onboard-title">New User? Link Bank Account</div>
+                <div class="onboard-sub">Device Binding • NPCI Discovery • Biometric MPIN</div>
+              </div>
+              <span class="onboard-arrow">›</span>
+            </button>
+          </div>
+        </div>
+      </div><!-- /screen-login -->
+
+      <!-- ══════════════════════ VOICE BIOMETRIC ENROLLMENT ══════════════════ -->
+      <div class="screen" id="screen-voice-enroll">
+        <div class="voice-enroll-inner">
+          <div class="voice-enroll-badge">Required</div>
+          <div class="voice-enroll-icon">🎙️</div>
+          <div class="voice-enroll-title">Set up Voice ID</div>
+          <div class="voice-enroll-sub" id="voice-enroll-sub">
+            Voice ID uses <strong>Resemblyzer</strong> (who) + <strong>AASIST</strong> anti-spoof (live vs recording).
+            Speak the phrase and the random code — phone playbacks cannot pass.
+          </div>
+
+          <div class="voice-enroll-steps" id="voice-enroll-steps">
+            <div class="voice-enroll-step" data-step="0">1</div>
+            <div class="voice-enroll-step" data-step="1">2</div>
+            <div class="voice-enroll-step" data-step="2">3</div>
+          </div>
+
+          <div class="voice-enroll-phrase" id="voice-enroll-phrase">
+            “My voice is my payment PIN for UPI Sim”
+          </div>
+
+          <div class="waveform idle" id="enroll-waveform">
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+          </div>
+
+          <div class="voice-enroll-status" id="voice-enroll-status">
+            Speak the phrase clearly in a quiet place
+          </div>
+
+          <button class="pay-now-btn" id="btn-voice-enroll-record">
+            🎤 Record sample 1 of 3
+          </button>
+          <div class="voice-enroll-error" id="voice-enroll-error"></div>
+        </div>
+      </div><!-- /screen-voice-enroll -->
+
+      <!-- ══════════════════════════ ONBOARDING SCREEN ════════════════════ -->
+      <div class="screen" id="screen-onboarding">
+        <div class="onboard-card">
+          <div class="back-header">
+            <button class="back-btn" id="btn-onboard-back" title="Back">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path d="M19 12H5M12 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <span class="back-title">Link Bank Account</span>
+          </div>
+
+          <!-- Progress Bar / Indicator -->
+          <div class="onboard-steps">
+            <div class="step-dot active" id="step-dot-1">1</div>
+            <div class="step-line" id="step-line-1"></div>
+            <div class="step-dot" id="step-dot-2">2</div>
+            <div class="step-line" id="step-line-2"></div>
+            <div class="step-dot" id="step-dot-3">3</div>
+            <div class="step-line" id="step-line-3"></div>
+            <div class="step-dot" id="step-dot-4">4</div>
+          </div>
+
+          <div class="onboard-body">
+            <!-- Step 1: Device / Number Binding -->
+            <div class="onboard-step-pane active" id="pane-step-1">
+              <div class="pane-badge">STEP 1 • DEVICE BINDING</div>
+              <h3 class="pane-title">Verify Phone / Email</h3>
+              <p class="pane-desc">Like Google Pay or PhonePe, we verify your registered device credentials before discovering your bank accounts.</p>
+
+              <div class="form-group">
+                <label for="onboard-name">Account Holder Name</label>
+                <input id="onboard-name" type="text" placeholder="e.g. Ananya Sen" class="input-field" value="Keyur Arbhelonde" />
+              </div>
+
+              <div class="form-group">
+                <label for="onboard-identifier">Mobile Number or Email</label>
+                <input id="onboard-identifier" type="text" placeholder="+91 98765 43210 or name@example.com" class="input-field" value="+91 98765 43210" />
+              </div>
+
+              <button id="btn-onboard-verify-binding" class="primary-btn" type="button">
+                <span>Verify & Query NPCI</span>
+                <span class="btn-arrow">→</span>
+              </button>
+              <div id="binding-status" class="binding-status-text"></div>
+            </div>
+
+            <!-- Step 2: NPCI Bank Discovery -->
+            <div class="onboard-step-pane" id="pane-step-2">
+              <div class="pane-badge">STEP 2 • NPCI CENTRAL MAPPER</div>
+              <h3 class="pane-title">Select Discovered Bank</h3>
+              <p class="pane-desc">NPCI Switch returned the following bank account linked to your verified credentials:</p>
+
+              <div id="discovered-banks-list" class="discovered-banks-list">
+                <!-- Populated dynamically via /npci/discover-accounts -->
+              </div>
+
+              <button id="btn-onboard-choose-bank" class="primary-btn" type="button" disabled>
+                <span>Link Selected Bank</span>
+                <span class="btn-arrow">→</span>
+              </button>
+            </div>
+
+            <!-- Step 3: UPI ID Generation -->
+            <div class="onboard-step-pane" id="pane-step-3">
+              <div class="pane-badge">STEP 3 • UPI HANDLE</div>
+              <h3 class="pane-title">Create your UPI ID (VPA)</h3>
+              <p class="pane-desc">This is your Virtual Payment Address for sending and receiving voice payments.</p>
+
+              <div class="vpa-preview-box">
+                <div class="vpa-preview-prefix">
+                  <input id="onboard-vpa-prefix" type="text" class="vpa-input" placeholder="username" />
+                </div>
+                <div class="vpa-preview-suffix" id="onboard-vpa-suffix">@hdfcbank</div>
+              </div>
+
+              <div class="vpa-suggestions" id="vpa-suggestions"></div>
+
+              <button id="btn-onboard-confirm-vpa" class="primary-btn" type="button">
+                <span>Confirm UPI ID</span>
+                <span class="btn-arrow">→</span>
+              </button>
+            </div>
+
+            <!-- Step 4: MPIN & Biometric Enrollment -->
+            <div class="onboard-step-pane" id="pane-step-4">
+              <div class="pane-badge">STEP 4 • SECURE SETUP</div>
+              <h3 class="pane-title">Set UPI PIN & Biometrics</h3>
+              <p class="pane-desc">Set your 4-digit bank transaction PIN, then enroll your device biometric (Passkey) for 1-touch voice payments.</p>
+
+              <div class="form-group">
+                <label for="onboard-pin">Set 4-digit UPI Transaction PIN</label>
+                <input id="onboard-pin" type="password" maxlength="4" placeholder="••••" class="input-field pin-box" value="1234" />
+                <div class="form-hint">Verified by NPCI / HDFC Bank during debits (fallback).</div>
+              </div>
+
+              <div class="biometric-optin-card">
+                <div class="bio-icon">👆</div>
+                <div class="bio-details">
+                  <div class="bio-title">Enable Biometric Payments (WebAuthn)</div>
+                  <div class="bio-sub">Touch ID / Face ID / Passkey unlocks cryptographic single-tap payments.</div>
+                </div>
+              </div>
+
+              <button id="btn-onboard-finish" class="primary-btn glow" type="button">
+                <span>Set PIN & Enroll Biometric</span>
+              </button>
+              <div id="onboard-final-status" class="binding-status-text"></div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /screen-onboarding -->
+
+      <!-- ═══════════════════════════════ HOME SCREEN ════════════════════ -->
+      <div class="screen active" id="screen-home">
+
+        <!-- Balance Card -->
+        <div class="balance-card">
+          <div class="balance-label">Available Balance</div>
+          <div class="balance-amount">
+            <span class="balance-currency">₹</span>
+            <span id="balance-value">50,000</span>
+          </div>
+          <div class="balance-vpa" id="balance-vpa">you@mockbank</div>
+          <button class="balance-refresh" id="btn-refresh-balance" title="Refresh balance">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <button class="action-btn voice-main" id="btn-voice-pay">
+            <div class="action-icon">🎤</div>
+            <span class="action-label">Voice Pay</span>
+          </button>
+          <button class="action-btn" id="btn-qr-demo">
+            <div class="action-icon">📷</div>
+            <span class="action-label">Scan QR</span>
+          </button>
+          <button class="action-btn" id="btn-history-nav">
+            <div class="action-icon">📋</div>
+            <span class="action-label">History</span>
+          </button>
+          <button class="action-btn" id="btn-reset-demo">
+            <div class="action-icon">🔄</div>
+            <span class="action-label">Reset</span>
+          </button>
+        </div>
+
+        <!-- Merchant Quick Pay -->
+        <div class="section-header">
+          <span class="section-title">Pay to</span>
+          <span class="section-link" id="btn-voice-pay-link">+ Voice Pay</span>
+        </div>
+        <div class="merchant-chips">
+          <div class="merchant-chip" data-vpa="swiggy@mockbank2" data-name="Swiggy" data-icon="🍔">
+            <div class="merchant-chip-icon">🍔</div>
+            <span class="merchant-chip-name">Swiggy</span>
+          </div>
+          <div class="merchant-chip" data-vpa="zomato@mockbank2" data-name="Zomato" data-icon="🍕">
+            <div class="merchant-chip-icon">🍕</div>
+            <span class="merchant-chip-name">Zomato</span>
+          </div>
+          <div class="merchant-chip" data-vpa="blinkit@mockbank2" data-name="Blinkit" data-icon="🛵">
+            <div class="merchant-chip-icon">🛵</div>
+            <span class="merchant-chip-name">Blinkit</span>
+          </div>
+          <div class="merchant-chip" data-vpa="sharmastore@mockbank2" data-name="Sharma Store" data-icon="🛒">
+            <div class="merchant-chip-icon">🛒</div>
+            <span class="merchant-chip-name">Sharma Store</span>
+          </div>
+          <div class="merchant-chip" data-vpa="amazon@mockbank2" data-name="Amazon" data-icon="📦">
+            <div class="merchant-chip-icon">📦</div>
+            <span class="merchant-chip-name">Amazon</span>
+          </div>
+          <div class="merchant-chip" data-vpa="petrolpump@mockbank2" data-name="HP Petrol Pump" data-icon="⛽">
+            <div class="merchant-chip-icon">⛽</div>
+            <span class="merchant-chip-name">HP Petrol</span>
+          </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="section-header">
+          <span class="section-title">Recent Transactions</span>
+          <span class="section-link" id="btn-see-all">See all →</span>
+        </div>
+        <div class="txn-list" id="home-txn-list">
+          <div class="txn-empty">
+            <div class="txn-empty-icon">💳</div>
+            No transactions yet. Try Voice Pay!
+          </div>
+        </div>
+
+        <!-- Settlement Counter -->
+        <div class="settlement-mini" id="settlement-mini" onclick="showScreen('settlement')">
+          <div class="settlement-mini-icon">🏦</div>
+          <div class="settlement-mini-info">
+            <div class="settlement-mini-title">Interbank Settlement</div>
+            <div class="settlement-mini-sub" id="settlement-mini-sub">Batch settlement — every 30s</div>
+          </div>
+          <div class="settlement-countdown" id="settlement-countdown">30s</div>
+        </div>
+
+      </div><!-- /screen-home -->
+
+      <!-- ══════════════════════════════ VOICE SCREEN ════════════════════ -->
+      <div class="screen" id="screen-voice">
+        <div class="voice-screen">
+          <button class="voice-close-btn" id="btn-voice-close">✕</button>
+
+          <div class="voice-ring-container">
+            <div class="voice-ring voice-ring-1"></div>
+            <div class="voice-ring voice-ring-2"></div>
+            <div class="voice-ring voice-ring-3"></div>
+            <button class="voice-mic-btn" id="voice-mic-btn">🎤</button>
+          </div>
+
+          <div class="waveform" id="waveform">
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+          </div>
+
+          <div class="voice-status-text" id="voice-status-text">Listening…</div>
+          <div class="voice-hint" id="voice-hint">
+            Try: <em>"Pay 500 to Swiggy"</em> or <em>"Send 1000 to Zomato"</em>
+          </div>
+
+          <div class="voice-transcript" id="voice-transcript">…</div>
+
+          <!-- Fallback text input -->
+          <div class="voice-text-input-row">
+            <input
+              class="voice-text-input"
+              id="voice-text-input"
+              type="text"
+              placeholder='Or type: "Pay 500 to Swiggy"'
+              autocomplete="off"
+            />
+            <button class="voice-send-btn" id="btn-text-send">→</button>
+          </div>
+        </div>
+      </div><!-- /screen-voice -->
+
+      <!-- ══════════════════════════ CONFIRM SCREEN ══════════════════════ -->
+      <div class="screen" id="screen-confirm">
+        <div class="back-header">
+          <button class="back-btn" onclick="showScreen('home')">←</button>
+          <span class="back-title">Confirm Payment</span>
+        </div>
+
+        <div class="merchant-hero">
+          <div class="merchant-avatar-large" id="confirm-merchant-icon">🛒</div>
+          <div class="merchant-name-large" id="confirm-merchant-name">Sharma Store</div>
+          <div class="merchant-vpa-small" id="confirm-merchant-vpa">sharmastore@mockbank2</div>
+        </div>
+
+        <div class="amount-display">
+          <div class="amount-display-label">You pay</div>
+          <div class="amount-display-value">
+            <span class="amount-display-currency">₹</span>
+            <span id="confirm-amount">500</span>
+          </div>
+        </div>
+
+        <div class="payment-meta">
+          <div class="payment-meta-row">
+            <span class="payment-meta-key">From</span>
+            <span class="payment-meta-value" id="confirm-from">you@mockbank</span>
+          </div>
+          <div class="payment-meta-row">
+            <span class="payment-meta-key">To</span>
+            <span class="payment-meta-value" id="confirm-to">sharmastore@mockbank2</span>
+          </div>
+          <div class="payment-meta-row">
+            <span class="payment-meta-key">Network</span>
+            <span class="payment-meta-value">UPI (Simulated)</span>
+          </div>
+          <div class="payment-meta-row">
+            <span class="payment-meta-key">Fee</span>
+            <span class="payment-meta-value fee-free">FREE</span>
+          </div>
+        </div>
+
+        <div class="voice-confirm-panel" id="voice-confirm-panel">
+          <div class="voice-confirm-ai" id="voice-confirm-ai">
+            AI will ask you to confirm this payment…
+          </div>
+          <div class="waveform idle" id="confirm-waveform">
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+          </div>
+          <div class="voice-confirm-transcript" id="voice-confirm-transcript"></div>
+          <div class="voice-confirm-hint" id="voice-confirm-hint">
+            Say <em>“Yes, make payment”</em> — only your enrolled voice will work
+          </div>
+        </div>
+
+        <button class="pay-now-btn" id="btn-pay-now">
+          🎤 Confirm with your voice
+        </button>
+        <span class="cancel-link" id="btn-confirm-cancel">Cancel</span>
+      </div><!-- /screen-confirm -->
+
+      <!-- ══════════════════════════════ PIN SCREEN ══════════════════════ -->
+      <div class="screen" id="screen-pin">
+        <div class="pin-screen-inner">
+          <div class="pin-lock-icon">🔐</div>
+          <div class="pin-title">Authorize Payment</div>
+          <div class="pin-subtitle">
+            Enter your 4-digit UPI PIN<br>
+            <span id="pin-amount-label" style="color:var(--blue);font-weight:700">₹500 to Sharma Store</span>
+          </div>
+
+          <div class="pin-dots">
+            <div class="pin-dot" id="pin-dot-0"></div>
+            <div class="pin-dot" id="pin-dot-1"></div>
+            <div class="pin-dot" id="pin-dot-2"></div>
+            <div class="pin-dot" id="pin-dot-3"></div>
+          </div>
+
+          <div class="pin-keypad" id="pin-keypad">
+            <button class="pin-key" data-val="1">1</button>
+            <button class="pin-key" data-val="2">2</button>
+            <button class="pin-key" data-val="3">3</button>
+            <button class="pin-key" data-val="4">4</button>
+            <button class="pin-key" data-val="5">5</button>
+            <button class="pin-key" data-val="6">6</button>
+            <button class="pin-key" data-val="7">7</button>
+            <button class="pin-key" data-val="8">8</button>
+            <button class="pin-key" data-val="9">9</button>
+            <button class="pin-key empty"></button>
+            <button class="pin-key" data-val="0">0</button>
+            <button class="pin-key backspace" id="pin-backspace">⌫</button>
+          </div>
+
+          <div class="pin-error-msg" id="pin-error"></div>
+          <div class="pin-hint">Demo PIN: 1234</div>
+        </div>
+      </div><!-- /screen-pin -->
+
+      <!-- ═══════════════════════════ PROCESSING SCREEN ══════════════════ -->
+      <div class="screen" id="screen-processing">
+        <div class="processing-screen-inner">
+          <div class="processing-title">Processing Payment</div>
+          <div class="processing-txn-id" id="processing-txn-id">TXN ID: —</div>
+
+          <!-- Hop Visualizer -->
+          <div class="hop-flow" style="margin-bottom:24px;">
+            <div class="hop-row">
+              <div class="hop-node" id="hop-psp">
+                <div class="hop-node-circle">💸</div>
+                <div class="hop-node-label">PSP</div>
+              </div>
+              <div class="hop-line" id="line-switch"></div>
+              <div class="hop-node" id="hop-switch">
+                <div class="hop-node-circle">🔀</div>
+                <div class="hop-node-label">NPCI<br>Switch</div>
+              </div>
+              <div class="hop-line" id="line-payer"></div>
+              <div class="hop-node" id="hop-payer-bank">
+                <div class="hop-node-circle">🏦</div>
+                <div class="hop-node-label">Payer<br>Bank</div>
+              </div>
+              <div class="hop-line" id="line-payee"></div>
+              <div class="hop-node" id="hop-payee-bank">
+                <div class="hop-node-circle">🏪</div>
+                <div class="hop-node-label">Payee<br>Bank</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="processing-status-text" id="processing-status-text">Initiating transaction…</div>
+
+          <!-- Live hop log -->
+          <div class="hop-log" id="hop-log">
+            <div class="hop-log-header">📡 Live Transaction Log</div>
+            <div id="hop-log-entries"></div>
+          </div>
+        </div>
+      </div><!-- /screen-processing -->
+
+      <!-- ══════════════════════════════ SUCCESS SCREEN ══════════════════ -->
+      <div class="screen" id="screen-success">
+        <div class="result-screen" id="success-confetti-area">
+          <div class="result-icon-wrap success">✅</div>
+          <div class="result-title">Payment Successful!</div>
+          <div class="result-amount" id="success-amount">₹500 sent</div>
+          <div class="result-to" id="success-to">to Sharma Store</div>
+
+          <div class="result-details">
+            <div class="result-detail-row">
+              <span class="result-detail-key">Transaction ID</span>
+              <span class="result-detail-val" id="success-txn-id">—</span>
+            </div>
+            <div class="result-detail-row">
+              <span class="result-detail-key">New Balance</span>
+              <span class="result-detail-val" id="success-new-balance">—</span>
+            </div>
+            <div class="result-detail-row">
+              <span class="result-detail-key">Settlement</span>
+              <span class="result-detail-val" style="color:var(--amber)">Pending batch</span>
+            </div>
+            <div class="result-detail-row">
+              <span class="result-detail-key">Time</span>
+              <span class="result-detail-val" id="success-time">—</span>
+            </div>
+          </div>
+
+          <button class="result-btn primary" onclick="showScreen('home')">Back to Home</button>
+          <button class="result-btn secondary" onclick="showScreen('history')">View History</button>
+        </div>
+      </div><!-- /screen-success -->
+
+      <!-- ══════════════════════════════ FAILED SCREEN ═══════════════════ -->
+      <div class="screen" id="screen-failed">
+        <div class="result-screen">
+          <div class="result-icon-wrap failed">❌</div>
+          <div class="result-title">Payment Failed</div>
+          <div class="result-amount" id="failed-amount">₹500</div>
+          <div class="result-to" id="failed-to">to Sharma Store</div>
+
+          <div class="error-reason" id="error-reason">Unknown error</div>
+
+          <div class="result-details">
+            <div class="result-detail-row">
+              <span class="result-detail-key">Transaction ID</span>
+              <span class="result-detail-val" id="failed-txn-id">—</span>
+            </div>
+            <div class="result-detail-row">
+              <span class="result-detail-key">Stage</span>
+              <span class="result-detail-val" id="failed-stage" style="color:var(--red)">—</span>
+            </div>
+          </div>
+
+          <button class="result-btn retry" id="btn-retry">Try Again</button>
+          <button class="result-btn home" onclick="showScreen('home')">Back to Home</button>
+        </div>
+      </div><!-- /screen-failed -->
+
+      <!-- ══════════════════════════════ HISTORY SCREEN ══════════════════ -->
+      <div class="screen" id="screen-history">
+        <div class="history-screen">
+          <div class="back-header history-header">
+            <button class="back-btn" onclick="showScreen('home')">←</button>
+            <span class="back-title">Transaction History</span>
+          </div>
+          <div class="history-filter-tabs">
+            <button class="filter-tab active" data-filter="all">All</button>
+            <button class="filter-tab" data-filter="success">Success</button>
+            <button class="filter-tab" data-filter="failed">Failed</button>
+            <button class="filter-tab" data-filter="settled">Settled</button>
+          </div>
+          <div class="txn-list" id="history-txn-list">
+            <div class="txn-empty">
+              <div class="txn-empty-icon">📭</div>
+              No transactions yet.
+            </div>
+          </div>
+        </div>
+      </div><!-- /screen-history -->
+
+      <!-- ══════════════════════════ SETTLEMENT SCREEN ═══════════════════ -->
+      <div class="screen" id="screen-settlement">
+        <div class="settlement-screen">
+          <div class="back-header" style="padding-bottom:16px;">
+            <button class="back-btn" onclick="showScreen('home')">←</button>
+            <span class="back-title">Settlement Cycles</span>
+          </div>
+
+          <div class="settlement-hero">
+            <div class="settlement-hero-label">Next Settlement In</div>
+            <div class="settlement-hero-timer" id="settlement-hero-timer">30s</div>
+            <div class="settlement-hero-sub">NPCI nets all txns between banks periodically — deferred settlement</div>
+          </div>
+
+          <div class="section-header" style="padding: 16px 20px 12px;">
+            <span class="section-title">Settlement Log</span>
+            <span style="font-size:12px;color:var(--text-3)" id="settlement-cycle-count">Cycle #0</span>
+          </div>
+
+          <div id="settlement-list">
+            <div class="txn-empty">
+              <div class="txn-empty-icon">⏳</div>
+              Waiting for first settlement cycle…
+            </div>
+          </div>
+        </div>
+      </div><!-- /screen-settlement -->
+
+    </div><!-- /screen-container -->
+
+    <!-- Bottom Navigation -->
+    <div class="bottom-nav">
+      <div class="nav-item active" id="nav-home" onclick="showScreen('home')">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M3 12L12 3l9 9M5 10v9a1 1 0 0 0 1 1h4v-5h4v5h4a1 1 0 0 0 1-1v-9" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Home
+      </div>
+      <div class="nav-item" id="nav-voice" onclick="startVoiceInput()">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="9" y="2" width="6" height="12" rx="3"/>
+          <path d="M5 10a7 7 0 0 0 14 0M12 19v3M9 22h6" stroke-linecap="round"/>
+        </svg>
+        Pay
+      </div>
+      <div class="nav-item" id="nav-history" onclick="showScreen('history'); loadHistory()">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="16" rx="2"/>
+          <path d="M7 8h10M7 12h6M7 16h8" stroke-linecap="round"/>
+        </svg>
+        History
+      </div>
+      <div class="nav-item" id="nav-settlement" onclick="showScreen('settlement'); loadSettlements()">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M3 6h18M3 12h18M3 18h10" stroke-linecap="round"/>
+          <circle cx="19" cy="18" r="3"/>
+          <path d="M19 16v2l1 1" stroke-linecap="round"/>
+        </svg>
+        Settle
+      </div>
+    </div>
+
+  </div><!-- /phone-frame -->
+
+  <!-- ── Architecture Sidebar (desktop) ──────────────────────────────────── -->
+  <div class="arch-panel">
+    <div>
+      <div class="arch-title">Service Architecture</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Live health status</div>
+    </div>
+
+    <div class="arch-service" id="arch-psp">
+      <div class="arch-svc-dot"></div>
+      <div class="arch-svc-info">
+        <div class="arch-svc-name">Mock PSP</div>
+        <div class="arch-svc-port">localhost:5001 — Orchestrator</div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">↓</div>
+
+    <div class="arch-service" id="arch-switch">
+      <div class="arch-svc-dot"></div>
+      <div class="arch-svc-info">
+        <div class="arch-svc-name">Mock NPCI Switch</div>
+        <div class="arch-svc-port">localhost:5002 — Router (no money)</div>
+      </div>
+    </div>
+
+    <div class="arch-arrow" style="display:flex;gap:40px;justify-content:center;">
+      <span>↙</span><span>↘</span>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <div class="arch-service" id="arch-payer" style="flex:1;">
+        <div class="arch-svc-dot"></div>
+        <div class="arch-svc-info">
+          <div class="arch-svc-name">Payer Bank</div>
+          <div class="arch-svc-port">:5003 — Debit</div>
+        </div>
+      </div>
+      <div class="arch-service" id="arch-payee" style="flex:1;">
+        <div class="arch-svc-dot"></div>
+        <div class="arch-svc-info">
+          <div class="arch-svc-name">Payee Bank</div>
+          <div class="arch-svc-port">:5004 — Credit</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">↓</div>
+
+    <div class="arch-service" id="arch-supabase">
+      <div class="arch-svc-dot"></div>
+      <div class="arch-svc-info">
+        <div class="arch-svc-name">Supabase PostgreSQL</div>
+        <div class="arch-svc-port" id="supabase-status-text">sanozvdqvezownhvhpdq</div>
+      </div>
+    </div>
+
+    <div class="arch-legend">
+      <strong style="color:var(--text-2);">UPI Flow</strong><br>
+      1. Login → Voice ID enroll (mandatory)<br>
+      2. Voice pay → AI confirm → speaker match<br>
+      3. PSP → Switch → Payer debit → Payee credit<br>
+      4. Batch settlement every 30s<br><br>
+      <span style="color:var(--amber);">⚠ Simulation only — no real money</span>
+    </div>
+  </div><!-- /arch-panel -->
+
+</div><!-- /desktop-bg -->
+
+<script src="webauthn.js"></script>
+<script src="voicebio.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
