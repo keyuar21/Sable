@@ -1,0 +1,45 @@
+# Recharge / biller — detects a number's operator and serves its prepaid plans.
+image:
+  repository: upi-recharge
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: recharge
+  module: mock_recharge.recharge_service:app
+  port: 5007
+
+replicaCount: 1   # ReadWriteOnce volume holds the lookup cache
+
+app:
+  config:
+    service: recharge
+    database:
+      path: /data/recharge.db
+    carrier_lookup:
+      provider: veriphone
+      endpoint: https://api.veriphone.io/v2/verify
+      # The key is NEVER in this file. It comes from the secret below, so it
+      # stays out of git and out of any rendered manifest.
+      cache_days: 30
+      # Veriphone's static mode reports the operator that originally held the
+      # number range, so a ported number shows its old operator.
+      mode: static
+    plans:
+      # Sample tariffs. Indian prepaid pricing changes often and there is no
+      # single open feed, so these are representative, not authoritative.
+      source: builtin
+      operators: [jio, airtel, vi, bsnl]
+
+# Create this secret out of band:
+#   kubectl -n upi create secret generic upi-veriphone \
+#     --from-literal=VERIPHONE_API_KEY=...
+existingSecret: upi-veriphone
+
+persistence:
+  enabled: true
+  mountPath: /data
+  size: 1Gi
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits:   { memory: 256Mi }

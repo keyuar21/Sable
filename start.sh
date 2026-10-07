@@ -60,8 +60,8 @@ $PY -m piper.download_voices --download-dir "$PIPER_VOICE_DIR" en_US-amy-medium 
   echo -e "${YELLOW}⚠ Piper voice download failed — browser voice fallback will be used.${NC}"
 
 # ── Kill any lingering services on our ports ──────────────────────────────────
-echo -e "${GREEN}[2/7] Clearing ports 5001-5005, 5010, 3000...${NC}"
-for port in 5001 5002 5003 5004 5005 5010 3000; do
+echo -e "${GREEN}[2/8] Clearing ports 5001-5005, 5007, 5010, 3000...${NC}"
+for port in 5001 5002 5003 5004 5005 5007 5010 3000; do
     lsof -ti:"$port" | xargs kill -9 2>/dev/null || true
 done
 sleep 0.5
@@ -69,20 +69,20 @@ sleep 0.5
 # ── Start microservices ───────────────────────────────────────────────────────
 SVC_DIR="$SCRIPT_DIR/services"
 
-echo -e "${GREEN}[3/7] Starting Mock Payer Bank     → http://localhost:5003${NC}"
+echo -e "${GREEN}[3/8] Starting Mock Payer Bank     → http://localhost:5003${NC}"
 cd "$SVC_DIR"
 PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn mock_payer_bank.bank_service:app --port 5003 --log-level info > /tmp/payer_bank.log 2>&1 &
 PAYER_PID=$!
 
-echo -e "${GREEN}[4/7] Starting Mock Payee Bank     → http://localhost:5004${NC}"
+echo -e "${GREEN}[4/8] Starting Mock Payee Bank     → http://localhost:5004${NC}"
 PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn mock_payee_bank.bank_service:app --port 5004 --log-level info > /tmp/payee_bank.log 2>&1 &
 PAYEE_PID=$!
 
-echo -e "${GREEN}[4/7] Starting Mock NPCI Switch    → http://localhost:5002${NC}"
+echo -e "${GREEN}[4/8] Starting Mock NPCI Switch    → http://localhost:5002${NC}"
 PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn mock_switch.switch_service:app --port 5002 --log-level info > /tmp/switch.log 2>&1 &
 SWITCH_PID=$!
 
-echo -e "${GREEN}[4/7] Starting Mock Auth (PIN+WebAuthn+Voice) → http://localhost:5005${NC}"
+echo -e "${GREEN}[4/8] Starting Mock Auth (PIN+WebAuthn+Voice) → http://localhost:5005${NC}"
 PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn mock_auth.auth_service:app --port 5005 --log-level info > /tmp/auth.log 2>&1 &
 AUTH_PID=$!
 
@@ -94,19 +94,26 @@ ${PY} "$SCRIPT_DIR/scripts/init_pins.py" || echo "PIN seeding script failed (con
 # Wait for banks and switch to be ready before starting PSP
 sleep 2
 
-echo -e "${GREEN}[5/7] Starting Mock PSP            → http://localhost:5001${NC}"
+echo -e "${GREEN}[5/8] Starting Mock PSP            → http://localhost:5001${NC}"
 PIPER_DATA_DIR="$PIPER_VOICE_DIR" PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn mock_psp.psp_service:app --port 5001 --log-level info > /tmp/psp.log 2>&1 &
 PSP_PID=$!
 
+# ── Start recharge service ───────────────────────────────────────────────────
+sleep 1
+echo -e "${GREEN}[6/8] Starting Recharge Service    → http://localhost:5007${NC}"
+PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" VERIPHONE_API_KEY="${VERIPHONE_API_KEY:-}" \
+  $PY -m uvicorn mock_recharge.recharge_service:app --port 5007 --log-level info > /tmp/recharge.log 2>&1 &
+RECHARGE_PID=$!
+
 # ── Start operations console ─────────────────────────────────────────────────
 sleep 1
-echo -e "${GREEN}[6/7] Starting Bank Ops Console    → http://localhost:5010${NC}"
+echo -e "${GREEN}[7/8] Starting Bank Ops Console    → http://localhost:5010${NC}"
 PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" $PY -m uvicorn ops_console.ops_service:app --port 5010 --log-level info > /tmp/ops_console.log 2>&1 &
 OPS_PID=$!
 
 # ── Start frontend server ─────────────────────────────────────────────────────
 sleep 1
-echo -e "${GREEN}[7/7] Serving Frontend             → http://localhost:3000${NC}"
+echo -e "${GREEN}[8/8] Serving Frontend             → http://localhost:3000${NC}"
 cd "$SCRIPT_DIR/frontend"
 $PY -m http.server 3000 --bind 127.0.0.1 > /tmp/frontend.log 2>&1 &
 FRONTEND_PID=$!
@@ -116,7 +123,7 @@ sleep 2
 # ── Health check ──────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}── Service Health ──────────────────────────────────────────${NC}"
-for svc in "PSP:5001" "Switch:5002" "PayerBank:5003" "PayeeBank:5004" "Auth:5005" "OpsConsole:5010"; do
+for svc in "PSP:5001" "Switch:5002" "PayerBank:5003" "PayeeBank:5004" "Auth:5005" "Recharge:5007" "OpsConsole:5010"; do
     name="${svc%%:*}"
     port="${svc##*:}"
     status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$port/health" 2>/dev/null || echo "000")
@@ -142,8 +149,8 @@ echo -e "${CYAN}── Ready! ────────────────�
 echo -e "  ${GREEN}▶  Customer app     http://localhost:3000${NC}   (Chrome/Edge — Web Speech API)"
 echo -e "  ${CYAN}▶  Bank Ops Console http://localhost:5010${NC}   (live double-entry ledger)"
 echo ""
-echo -e "  PIDs → PSP:$PSP_PID  Switch:$SWITCH_PID  Payer:$PAYER_PID  Payee:$PAYEE_PID  Auth:$AUTH_PID  Ops:$OPS_PID  Frontend:$FRONTEND_PID"
-echo -e "  Logs → /tmp/psp.log  /tmp/switch.log  /tmp/payer_bank.log  /tmp/payee_bank.log  /tmp/auth.log  /tmp/ops_console.log"
+echo -e "  PIDs → PSP:$PSP_PID  Switch:$SWITCH_PID  Payer:$PAYER_PID  Payee:$PAYEE_PID  Auth:$AUTH_PID  Recharge:$RECHARGE_PID  Ops:$OPS_PID  Frontend:$FRONTEND_PID"
+echo -e "  Logs → /tmp/psp.log  /tmp/switch.log  /tmp/payer_bank.log  /tmp/payee_bank.log  /tmp/auth.log  /tmp/recharge.log  /tmp/ops_console.log"
 echo ""
 echo -e "${YELLOW}  Press Ctrl+C to stop all services${NC}"
 echo ""
@@ -151,7 +158,7 @@ echo ""
 # ── Trap to kill all services on exit ────────────────────────────────────────
 cleanup() {
     echo -e "\n${YELLOW}Stopping all services...${NC}"
-    kill $PSP_PID $SWITCH_PID $PAYER_PID $PAYEE_PID $AUTH_PID $OPS_PID $FRONTEND_PID 2>/dev/null || true
+    kill $PSP_PID $SWITCH_PID $PAYER_PID $PAYEE_PID $AUTH_PID $RECHARGE_PID $OPS_PID $FRONTEND_PID 2>/dev/null || true
     echo "Done."
 }
 trap cleanup EXIT INT TERM

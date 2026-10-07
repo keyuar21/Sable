@@ -15,6 +15,7 @@ const API = {
   payerBank: RUNTIME.payerBank || 'http://localhost:5003',
   payeeBank: RUNTIME.payeeBank || 'http://localhost:5004',
   auth:      RUNTIME.auth      || 'http://localhost:5005',
+  recharge:  RUNTIME.recharge  || 'http://localhost:5007',
 };
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ const state = {
   recognition: null,
   voiceEnroll: { step: 0, samples: [], recording: false },
   voiceConfirmBusy: false,
+  pendingRecharge: null,   // set while a recharge payment is in flight
 };
 
 // Start periodic tasks after a successful login
@@ -55,6 +57,9 @@ function startAfterLogin() {
     PayeeBank: `${API.payeeBank}/health`,
   });
 }
+
+// Per-transaction cap, mirrored from the PSP's own limit.
+const MAX_TXN_AMOUNT = 100000;
 
 // ── Merchant directory ────────────────────────────────────────────────────────
 const MERCHANTS = {
@@ -82,6 +87,22 @@ function escapeHtml(str) {
 // so one user's device never reveals another user's VPA.
 const DEVICE_ACCOUNTS_KEY = 'upiSim.deviceAccounts.v1';
 
+/** 10 local digits from whatever was typed, or null if it is not a mobile. */
+function normaliseMobile(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 10) return d;
+  if (d.length === 12 && d.startsWith('91')) return d.slice(2);
+  if (d.length === 11 && d.startsWith('0')) return d.slice(1);
+  return null;
+}
+
+/** The number this device was set up with, if we know it. */
+function myMobile() {
+  const acct = getDeviceAccounts().find(a => a.vpa === state.user.vpa) || getDeviceAccounts()[0];
+  // Some VPAs are the mobile number itself (9820098200@ybl), so fall back to that.
+  return acct?.mobile || normaliseMobile((state.user.vpa || '').split('@')[0]);
+}
+
 function getDeviceAccounts() {
   try {
     const raw = JSON.parse(localStorage.getItem(DEVICE_ACCOUNTS_KEY) || '[]');
@@ -91,10 +112,18 @@ function getDeviceAccounts() {
   }
 }
 
-function rememberDeviceAccount(vpa, holderName) {
+function rememberDeviceAccount(vpa, holderName, mobile) {
   if (!vpa) return;
+  const existing = getDeviceAccounts().find(a => a.vpa === vpa);
   const accounts = getDeviceAccounts().filter(a => a.vpa !== vpa);
-  accounts.unshift({ vpa, holder_name: holderName || vpa });
+  accounts.unshift({
+    vpa,
+    holder_name: holderName || vpa,
+    // The number given at bank-linking time. Kept so recharge can offer
+    // "my number" without asking again. An existing value is not overwritten
+    // by a later sign-in that has no number to hand.
+    mobile: normaliseMobile(mobile) || existing?.mobile || null,
+  });
   try {
     localStorage.setItem(DEVICE_ACCOUNTS_KEY, JSON.stringify(accounts));
   } catch (e) {
@@ -140,6 +169,10 @@ function showScreen(name) {
       name = 'voice-enroll';
     }
   }
+
+  // Leaving the scanner must release the camera, or the indicator light stays
+  // on and the stream keeps running in the background.
+  if (name !== 'qr' && typeof stopQrScan === 'function') stopQrScan();
 
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const screen = document.getElementById(`screen-${name}`);
@@ -194,17 +227,27 @@ function parseIntent(text) {
   if (!text) return null;
   text = text.toLowerCase().trim();
 
-  // Amount: support "500", "1,000", "1.5k", "1 thousand"
+  // Amount: supports "500", "1,000", "1.5k", "2 lakh".
+  //
+  // The comma-grouped alternative MUST require at least one group (+ not *).
+  // With * it matches a bare three-digit prefix and, because alternation takes
+  // the first branch that matches, "20000" was read as "200" and "2500" as
+  // "250" — every amount over three digits was silently truncated.
   let amount = null;
-  const amtMatch = text.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:k|thousand|lakh|rupees?|rs\.?)?/);
+  const amtMatch = text.match(/(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:k|thousand|lakh|lac|rupees?|rs\.?)?/);
   if (amtMatch) {
-    let raw = amtMatch[1].replace(/,/g, '');
+    const raw = amtMatch[1].replace(/,/g, '');
     amount = parseFloat(raw);
-    if (text.match(/\d+\s*k\b/)) amount *= 1000;
-    if (text.match(/\d+\s*(lakh|lac)/)) amount *= 100000;
+    if (/[\d.]\s*(k\b|thousand)/.test(text)) amount *= 1000;
+    if (/[\d.]\s*(lakh|lac)\b/.test(text)) amount *= 100000;
   }
 
-  if (!amount || amount <= 0 || amount > 100000) return null;
+  if (!amount || amount <= 0) return null;
+  // Over the per-transaction cap: report it rather than failing as "not
+  // understood", so the user learns why instead of repeating themselves.
+  if (amount > MAX_TXN_AMOUNT) {
+    return { error: 'limit', amount: Math.round(amount * 100) / 100 };
+  }
 
   // Merchant matching
   let merchant = null;
@@ -260,12 +303,12 @@ function startVoiceInput() {
 
     if (event.results[event.results.length - 1].isFinal) {
       const intent = parseIntent(text);
-      if (intent) {
+      if (intent && !intent.error) {
         stopVoiceInput();
         showConfirm(intent.merchant, intent.amount);
-      } else {
-        statusText.textContent = 'Could not understand';
-        hint.textContent = 'Be specific: "Pay 500 to Swiggy"';
+      } else if (intent && intent.error === 'limit') {
+        statusText.textContent = 'Amount too high';
+        hint.textContent = `₹${formatAmount(intent.amount)} is over the ₹${formatAmount(MAX_TXN_AMOUNT)} per-payment limit.`;
         waveform.classList.add('idle');
         micBtn.classList.remove('listening');
         micBtn.classList.add('idle');
@@ -304,10 +347,16 @@ function handleTextInput() {
   document.getElementById('voice-transcript').textContent = `"${text}"`;
   const intent = parseIntent(text);
 
-  if (intent) {
+  if (intent && !intent.error) {
     input.value = '';
     stopVoiceInput();
     showConfirm(intent.merchant, intent.amount);
+  } else if (intent && intent.error === 'limit') {
+    document.getElementById('voice-status-text').textContent = 'Amount too high';
+    document.getElementById('voice-hint').textContent =
+      `₹${formatAmount(intent.amount)} is over the ₹${formatAmount(MAX_TXN_AMOUNT)} per-payment limit.`;
+    input.style.borderColor = 'var(--red)';
+    setTimeout(() => { input.style.borderColor = ''; }, 1500);
   } else {
     document.getElementById('voice-status-text').textContent = 'Could not understand';
     document.getElementById('voice-hint').textContent = 'Try: "Pay 500 to Swiggy"';
@@ -595,6 +644,337 @@ function handleMerchantChipClick(el) {
   showConfirm({ vpa, name, icon }, amt);
 }
 
+// ── Mobile recharge ───────────────────────────────────────────────────────────
+//
+// The operator is detected server-side via Veriphone — the API key stays on the
+// recharge service and never reaches this file. Plans come from that operator's
+// catalogue, and paying for one reuses the ordinary UPI payment flow.
+
+const rc = { phone: null, operator: null, operatorName: null, plans: [], pickerOpen: false };
+let rcDebounce = null;
+
+function openRecharge() {
+  if (!isUnlocked()) return showScreen('login');
+  showScreen('recharge');
+
+  // Show the "my number" shortcut only when we actually know the number —
+  // an empty card that does nothing is worse than no card.
+  const mine = myMobile();
+  const card = document.getElementById('rc-mine');
+  const or = document.getElementById('rc-or');
+  const otherLabel = document.getElementById('rc-other-label');
+
+  if (mine) {
+    document.getElementById('rc-mine-value').textContent =
+      `+91 ${mine.slice(0, 5)} ${mine.slice(5)}`;
+    card.classList.remove('hidden');
+    or.classList.remove('hidden');
+    otherLabel.textContent = 'Another number';
+  } else {
+    card.classList.add('hidden');
+    or.classList.add('hidden');
+    otherLabel.textContent = 'Mobile number';
+    document.getElementById('rc-phone').focus();
+  }
+
+  document.getElementById('rc-phone').value = '';
+  setRcDetect('');
+  document.getElementById('rc-current').classList.add('hidden');
+  document.getElementById('rc-plans-wrap').classList.add('hidden');
+}
+
+/** One tap: fill in this device's own number and look it up. */
+function rechargeMyNumber() {
+  const mine = myMobile();
+  if (!mine) return;
+  document.getElementById('rc-phone').value = mine;
+  detectOperator(mine);
+}
+
+function setRcDetect(html, cls = '') {
+  const el = document.getElementById('rc-detect');
+  el.className = `rc-detect ${cls}`;
+  el.innerHTML = html;
+}
+
+/** Look up the operator, then load its plans and any active subscription. */
+async function detectOperator(raw) {
+  const digits = (raw || '').replace(/\D/g, '');
+  document.getElementById('rc-current').classList.add('hidden');
+  document.getElementById('rc-plans-wrap').classList.add('hidden');
+
+  if (digits.length < 10) {
+    setRcDetect(digits.length ? 'Enter all 10 digits' : '');
+    return;
+  }
+
+  setRcDetect('<span class="rc-spin"></span> Checking operator…', 'muted');
+  try {
+    const res = await fetch(`${API.recharge}/carrier?phone=${encodeURIComponent(digits)}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'Lookup failed');
+
+    if (!d.valid || !d.operator) {
+      setRcDetect(
+        `Could not identify the operator${d.phone_type && d.phone_type !== 'mobile'
+          ? ` — that looks like a ${d.phone_type.replace('_', ' ')} number` : ''}. Pick one below.`,
+        'warn');
+      rc.phone = d.phone;
+      showOperatorPicker(true);
+      return;
+    }
+
+    rc.phone = d.phone;
+    setRcDetect(
+      `<span class="rc-op-badge op-${d.operator}">${escapeHtml(d.operator_name)}</span>` +
+      `<span class="rc-op-note">${d.source === 'cache' ? 'from this device' : escapeHtml(d.note || '')}</span>`,
+      'ok');
+    await Promise.all([loadPlans(d.operator), loadSubscription(d.phone)]);
+  } catch (e) {
+    setRcDetect(`Operator lookup unavailable — ${escapeHtml(e.message)}. Pick one below.`, 'warn');
+    rc.phone = `+91${digits}`;
+    showOperatorPicker(true);
+  }
+}
+
+async function showOperatorPicker(open) {
+  const el = document.getElementById('rc-op-picker');
+  rc.pickerOpen = open;
+  el.classList.toggle('hidden', !open);
+  document.getElementById('rc-plans-wrap').classList.remove('hidden');
+  if (!el.dataset.loaded) {
+    try {
+      const { operators } = await fetch(`${API.recharge}/operators`).then(r => r.json());
+      el.innerHTML = operators.map(o =>
+        `<button class="rc-op-chip op-${o.key}" data-op="${o.key}">${escapeHtml(o.name)}</button>`).join('');
+      el.querySelectorAll('.rc-op-chip').forEach(b =>
+        b.addEventListener('click', () => {
+          showOperatorPicker(false);
+          setRcDetect(`<span class="rc-op-badge op-${b.dataset.op}">${escapeHtml(b.textContent)}</span>` +
+                      `<span class="rc-op-note">chosen manually</span>`, 'ok');
+          loadPlans(b.dataset.op);
+        }));
+      el.dataset.loaded = '1';
+    } catch { el.innerHTML = '<div class="rc-empty">Operator list unavailable</div>'; }
+  }
+}
+
+async function loadPlans(operator) {
+  const wrap = document.getElementById('rc-plans-wrap');
+  const list = document.getElementById('rc-plans');
+  wrap.classList.remove('hidden');
+  list.innerHTML = '<div class="rc-empty">Loading plans…</div>';
+  try {
+    const d = await fetch(`${API.recharge}/plans/${operator}`).then(r => r.json());
+    rc.operator = operator;
+    rc.operatorName = d.operator_name;
+    rc.plans = d.plans;
+    document.getElementById('rc-plans-title').textContent = `${d.operator_name} plans`;
+    document.getElementById('rc-disclaimer').textContent = d.disclaimer;
+    list.innerHTML = d.plans.map(p => `
+      <button class="rc-plan" data-plan="${p.id}">
+        <div class="rc-plan-price">₹${p.price}</div>
+        <div class="rc-plan-body">
+          <div class="rc-plan-top">
+            <span class="rc-plan-data">${escapeHtml(p.data)}</span>
+            ${p.popular ? '<span class="rc-plan-tag">POPULAR</span>' : ''}
+          </div>
+          <div class="rc-plan-meta">${p.validity_days} days · ${escapeHtml(p.calls)} calls · ${escapeHtml(p.sms)}</div>
+          ${p.extras.length ? `<div class="rc-plan-extras">${p.extras.map(escapeHtml).join(' · ')}</div>` : ''}
+        </div>
+        <span class="rc-plan-go">›</span>
+      </button>`).join('');
+    list.querySelectorAll('.rc-plan').forEach(b =>
+      b.addEventListener('click', () => payForPlan(b.dataset.plan)));
+  } catch (e) {
+    list.innerHTML = `<div class="rc-empty">Could not load plans — ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadSubscription(phone) {
+  const el = document.getElementById('rc-current');
+  try {
+    const d = await fetch(`${API.recharge}/subscription/${encodeURIComponent(phone)}`).then(r => r.json());
+    if (!d.active) { el.classList.add('hidden'); return; }
+    const urgent = d.expired || d.expiring_soon;
+    el.className = `rc-current ${urgent ? 'urgent' : ''}`;
+    el.innerHTML = `
+      <div class="rc-current-head">
+        <span>Current plan</span>
+        <span class="rc-current-pill">${d.expired ? 'EXPIRED'
+          : d.days_left === 0 ? 'EXPIRES TODAY' : `${d.days_left} DAYS LEFT`}</span>
+      </div>
+      <div class="rc-current-main">₹${d.price} · ${escapeHtml(d.plan.data || '')}</div>
+      <div class="rc-current-sub">
+        ${escapeHtml(d.operator_name)} · ${d.expired ? 'expired on' : 'valid until'}
+        ${new Date(d.expires_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+      </div>`;
+  } catch { el.classList.add('hidden'); }
+}
+
+/** Pay for a plan through the normal UPI flow, then activate it on success. */
+function payForPlan(planId) {
+  const plan = rc.plans.find(p => p.id === planId);
+  if (!plan || !rc.phone) return;
+  const local = rc.phone.replace('+91', '');
+  state.pendingRecharge = { phone: rc.phone, operator: rc.operator, plan_id: plan.id };
+  showConfirm({
+    vpa: `${rc.operator}@billpay`,
+    name: `${rc.operatorName} · ${local}`,
+    icon: '📱',
+  }, plan.price);
+}
+
+/** Called after a payment succeeds; starts the plan's validity. */
+async function activatePendingRecharge(txnId) {
+  const pending = state.pendingRecharge;
+  if (!pending) return;
+  state.pendingRecharge = null;
+  try {
+    await fetch(`${API.recharge}/subscription/activate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...pending, txn_id: txnId }),
+    });
+  } catch (e) {
+    console.warn('Recharge activation failed:', e);
+  }
+}
+
+// ── QR scanning ───────────────────────────────────────────────────────────────
+//
+// The old "Scan QR" button picked a random merchant and asked for an amount in
+// a prompt() — it never looked at a camera. This reads real UPI QR codes using
+// the browser's built-in BarcodeDetector, so no library is needed; Chrome and
+// Edge ship it. Anything else falls back to typing the UPI ID by hand.
+
+let qrStream = null;
+let qrLoopId = null;
+
+function setQrStatus(msg, isError = false) {
+  const el = document.getElementById('qr-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--red)' : '';
+}
+
+/** Build a payee from a bare VPA, reusing the known merchant icon when we have one. */
+function payeeFromVpa(vpa, nameHint = '') {
+  const handle = vpa.split('@')[0].toLowerCase();
+  for (const [key, info] of Object.entries(MERCHANTS)) {
+    if (info.vpa === vpa || handle === key.replace(/\s+/g, '')) return info;
+  }
+  return {
+    vpa,
+    name: nameHint || handle.charAt(0).toUpperCase() + handle.slice(1),
+    icon: getMerchantIcon(vpa),
+  };
+}
+
+/**
+ * Parse a scanned UPI QR payload.
+ * Real-world format: upi://pay?pa=<vpa>&pn=<name>&am=<amount>&cu=INR
+ * A static QR carries no amount, so the user is asked for one.
+ */
+function parseUpiQr(raw) {
+  if (!raw) return null;
+  const text = raw.trim();
+  try {
+    if (/^upi:\/\//i.test(text)) {
+      const q = new URLSearchParams(text.slice(text.indexOf('?') + 1));
+      const pa = (q.get('pa') || '').trim().toLowerCase();
+      if (!pa.includes('@')) return null;
+      const am = parseFloat(q.get('am') || '');
+      return { vpa: pa, name: q.get('pn') || '', amount: Number.isFinite(am) && am > 0 ? am : null };
+    }
+  } catch { /* fall through to the bare-VPA case */ }
+  // Some QR codes carry just the VPA.
+  if (/^[a-z0-9._-]+@[a-z0-9.-]+$/i.test(text)) {
+    return { vpa: text.toLowerCase(), name: '', amount: null };
+  }
+  return null;
+}
+
+async function startQrScan() {
+  if (!isUnlocked()) return showScreen('login');
+  showScreen('qr');
+  document.getElementById('qr-manual-vpa').value = '';
+  document.getElementById('qr-manual-amt').value = '';
+
+  const video = document.getElementById('qr-video');
+  const placeholder = document.getElementById('qr-placeholder');
+  const placeholderText = document.getElementById('qr-placeholder-text');
+
+  if (!('BarcodeDetector' in window)) {
+    placeholderText.textContent = 'This browser cannot scan QR codes — enter the UPI ID below';
+    setQrStatus('Scanning needs Chrome or Edge', true);
+    return;
+  }
+
+  try {
+    qrStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+    });
+  } catch (e) {
+    placeholderText.textContent =
+      e && e.name === 'NotAllowedError'
+        ? 'Camera permission denied — enter the UPI ID below'
+        : 'No camera available — enter the UPI ID below';
+    setQrStatus('Camera unavailable', true);
+    return;
+  }
+
+  video.srcObject = qrStream;
+  await video.play().catch(() => {});
+  placeholder.classList.add('hidden');
+  setQrStatus('Point the camera at any UPI QR code');
+
+  const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+  let busy = false;
+
+  const tick = async () => {
+    if (!qrStream) return;
+    if (!busy && video.readyState >= 2) {
+      busy = true;
+      try {
+        const codes = await detector.detect(video);
+        if (codes && codes.length) {
+          const parsed = parseUpiQr(codes[0].rawValue);
+          if (parsed) {
+            const payee = payeeFromVpa(parsed.vpa, parsed.name);
+            stopQrScan();
+            if (parsed.amount) {
+              showConfirm(payee, parsed.amount);           // dynamic QR
+            } else {
+              // Static QR: it names the payee but not the amount.
+              document.getElementById('qr-manual-vpa').value = parsed.vpa;
+              showScreen('qr');
+              setQrStatus(`Found ${payee.name} — enter the amount below`);
+              document.getElementById('qr-manual-amt').focus();
+            }
+            return;
+          }
+          setQrStatus('That QR is not a UPI code', true);
+        }
+      } catch { /* a dropped frame is not worth reporting */ }
+      busy = false;
+    }
+    qrLoopId = requestAnimationFrame(tick);
+  };
+  qrLoopId = requestAnimationFrame(tick);
+}
+
+function stopQrScan() {
+  if (qrLoopId) { cancelAnimationFrame(qrLoopId); qrLoopId = null; }
+  if (qrStream) {
+    qrStream.getTracks().forEach(t => t.stop());   // release the camera light
+    qrStream = null;
+  }
+  const video = document.getElementById('qr-video');
+  if (video) video.srcObject = null;
+  document.getElementById('qr-placeholder')?.classList.remove('hidden');
+}
+
 // ── PIN screen ────────────────────────────────────────────────────────────────
 function showPin() {
   state.pin = '';
@@ -803,6 +1183,9 @@ function buildLogEntry(entry) {
 
 // ── Success screen ────────────────────────────────────────────────────────────
 function showSuccess(data) {
+  // A recharge only becomes active once the money has actually moved.
+  activatePendingRecharge(data.txn_id);
+
   document.getElementById('success-amount').textContent  = `₹${formatAmount(data.amount)} sent`;
   document.getElementById('success-to').textContent      = `to ${state.payment.payeeName}`;
   document.getElementById('success-txn-id').textContent  = data.txn_id;
@@ -828,6 +1211,8 @@ function showSuccess(data) {
 }
 
 // ── Failed screen ─────────────────────────────────────────────────────────────
+function clearPendingRecharge() { state.pendingRecharge = null; }
+
 function showFailed(reason, txnId, stage) {
   document.getElementById('failed-amount').textContent  = `₹${formatAmount(state.payment.amount)}`;
   document.getElementById('failed-to').textContent      = `to ${state.payment.payeeName}`;
@@ -848,6 +1233,7 @@ function showFailed(reason, txnId, stage) {
   });
 
   updateHomeTxnList();
+  clearPendingRecharge();
   showScreen('failed');
 }
 
@@ -1106,12 +1492,31 @@ document.addEventListener('DOMContentLoaded', () => {
     showScreen('history'); loadHistory();
   });
   document.getElementById('btn-reset-demo').addEventListener('click', resetSystem);
-  document.getElementById('btn-qr-demo').addEventListener('click', () => {
-    // Simulate QR scan — pick a random merchant
-    const merchants = Object.values(MERCHANTS);
-    const m = merchants[Math.floor(Math.random() * merchants.length)];
-    const amt = parseFloat(prompt(`QR scanned: ${m.name}\nEnter amount (₹):`, '100') || '0');
-    if (amt > 0) showConfirm(m, amt);
+  document.getElementById('btn-qr-demo').addEventListener('click', () => startQrScan());
+
+  // Recharge
+  document.getElementById('btn-recharge').addEventListener('click', () => openRecharge());
+  document.getElementById('btn-recharge-back').addEventListener('click', () => showScreen('home'));
+  document.getElementById('rc-switch-op').addEventListener('click', () => showOperatorPicker(!rc.pickerOpen));
+  document.getElementById('rc-mine').addEventListener('click', rechargeMyNumber);
+  document.getElementById('rc-phone').addEventListener('input', (e) => {
+    // Debounced: a lookup costs a credit, so do not fire on every keystroke.
+    clearTimeout(rcDebounce);
+    const v = e.target.value;
+    rcDebounce = setTimeout(() => detectOperator(v), 450);
+  });
+  document.getElementById('btn-qr-back').addEventListener('click', () => {
+    stopQrScan();
+    showScreen('home');
+  });
+  document.getElementById('btn-qr-manual-go').addEventListener('click', () => {
+    const vpa = (document.getElementById('qr-manual-vpa').value || '').trim().toLowerCase();
+    const amt = parseFloat((document.getElementById('qr-manual-amt').value || '').replace(/[^\d.]/g, ''));
+    if (!vpa.includes('@')) return setQrStatus('Enter a full UPI ID, e.g. merchant@bank', true);
+    if (!amt || amt <= 0) return setQrStatus('Enter an amount greater than zero', true);
+    if (amt > MAX_TXN_AMOUNT) return setQrStatus(`Over the ₹${formatAmount(MAX_TXN_AMOUNT)} limit`, true);
+    stopQrScan();
+    showConfirm(payeeFromVpa(vpa), amt);
   });
 
   // Merchant chips
@@ -1391,12 +1796,44 @@ document.addEventListener('DOMContentLoaded', () => {
     selectAccount(accounts[0].vpa);
   }
 
-  document.getElementById('header-avatar')?.addEventListener('click', () => {
+  // Account sheet — tapping the avatar used to sign out instantly with no
+  // warning and no visible control anywhere. Now it opens a sheet that names
+  // who is signed in and offers an explicit Sign out.
+  const sheet = document.getElementById('account-sheet');
+
+  function openAccountSheet() {
     if (!state.loggedIn) return;
+    document.getElementById('sheet-name').textContent = state.user.name || state.user.vpa;
+    document.getElementById('sheet-vpa').textContent = state.user.vpa;
+    document.getElementById('sheet-initial').textContent =
+      (state.user.name || state.user.vpa).charAt(0).toUpperCase();
+    sheet.classList.add('open');
+  }
+  function closeAccountSheet() { sheet.classList.remove('open'); }
+
+  document.getElementById('header-avatar')?.addEventListener('click', openAccountSheet);
+  document.getElementById('sheet-backdrop')?.addEventListener('click', closeAccountSheet);
+  document.getElementById('btn-sheet-close')?.addEventListener('click', closeAccountSheet);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sheet?.classList.contains('open')) closeAccountSheet();
+  });
+
+  document.getElementById('btn-sign-out')?.addEventListener('click', () => {
+    closeAccountSheet();
     signOut();
     loginPinInput.value = '';
     renderDeviceAccounts();
     setLoginStatus('Signed out. This device still remembers your UPI ID.', 'info');
+  });
+
+  document.getElementById('btn-forget-device')?.addEventListener('click', () => {
+    const vpa = state.user.vpa;
+    closeAccountSheet();
+    forgetDeviceAccount(vpa);
+    signOut();
+    loginPinInput.value = '';
+    renderDeviceAccounts();
+    setLoginStatus(`${vpa} removed from this device.`, 'info');
   });
 
   btnUseOtherVpa?.addEventListener('click', () => setManualVpaMode(true));
@@ -1630,7 +2067,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDiv.innerHTML = '<span style="color:var(--green);">🎉 Account linked successfully! Opening dashboard…</span>';
 
         // 3. Bind the new account to this device, then finish login
-        rememberDeviceAccount(onboardState.chosenVpa, onboardState.name);
+        rememberDeviceAccount(onboardState.chosenVpa, onboardState.name, onboardState.identifier);
         renderDeviceAccounts();
         setTimeout(() => {
           btnFinishOnboard.disabled = false;

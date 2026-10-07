@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>UPI Sim — Voice Payments</title>
   <meta name="description" content="A polished voice-first UPI payment simulator.">
-  <link rel="stylesheet" href="styles.css?v=voice-3">
+  <link rel="stylesheet" href="styles.css?v=rc-2">
 </head>
 <body>
 
@@ -332,9 +332,9 @@
             <div class="action-icon">📋</div>
             <span class="action-label">History</span>
           </button>
-          <button class="action-btn" id="btn-reset-demo">
-            <div class="action-icon">🔄</div>
-            <span class="action-label">Reset</span>
+          <button class="action-btn" id="btn-recharge">
+            <div class="action-icon">📱</div>
+            <span class="action-label">Recharge</span>
           </button>
         </div>
 
@@ -399,6 +399,82 @@
         </div><!-- /home-col-b -->
 
       </div><!-- /screen-home -->
+
+      <!-- ══════════════════════════════ RECHARGE SCREEN ═════════════════ -->
+      <div class="screen" id="screen-recharge">
+        <div class="back-header">
+          <button class="back-btn" id="btn-recharge-back" title="Back">←</button>
+          <span class="back-title">Mobile Recharge</span>
+        </div>
+
+        <div class="rc-input-block">
+
+          <!-- Recharging your own number is the common case, so it is one tap. -->
+          <button class="rc-mine" id="rc-mine" type="button">
+            <span class="rc-mine-icon">📶</span>
+            <div class="rc-mine-text">
+              <div class="rc-mine-label">My number</div>
+              <div class="rc-mine-value" id="rc-mine-value">—</div>
+            </div>
+            <span class="rc-mine-go">›</span>
+          </button>
+
+          <div class="rc-or" id="rc-or"><span>or recharge another number</span></div>
+
+          <label class="login-label" for="rc-phone" id="rc-other-label">Another number</label>
+          <div class="rc-phone-row">
+            <span class="rc-cc">+91</span>
+            <input id="rc-phone" class="login-input rc-phone" type="tel" inputmode="numeric"
+                   maxlength="12" placeholder="98200 98200" autocomplete="tel" />
+          </div>
+          <div class="rc-detect" id="rc-detect"></div>
+        </div>
+
+        <div class="rc-current hidden" id="rc-current"></div>
+
+        <div class="rc-plans-wrap hidden" id="rc-plans-wrap">
+          <div class="section-header">
+            <span class="section-title" id="rc-plans-title">Plans</span>
+            <span class="section-link" id="rc-switch-op">Change operator</span>
+          </div>
+          <div class="rc-op-picker hidden" id="rc-op-picker"></div>
+          <div class="rc-plans" id="rc-plans"></div>
+          <p class="rc-disclaimer" id="rc-disclaimer"></p>
+        </div>
+      </div><!-- /screen-recharge -->
+
+      <!-- ══════════════════════════════ SCAN QR SCREEN ══════════════════ -->
+      <div class="screen" id="screen-qr">
+        <div class="back-header">
+          <button class="back-btn" id="btn-qr-back" title="Back">←</button>
+          <span class="back-title">Scan QR</span>
+        </div>
+
+        <div class="qr-stage">
+          <video id="qr-video" class="qr-video" playsinline muted></video>
+          <div class="qr-reticle"><span></span><span></span><span></span><span></span></div>
+          <div class="qr-placeholder" id="qr-placeholder">
+            <div class="qr-placeholder-icon">📷</div>
+            <div id="qr-placeholder-text">Starting camera…</div>
+          </div>
+        </div>
+
+        <div class="qr-status" id="qr-status">Point the camera at any UPI QR code</div>
+
+        <div class="qr-manual">
+          <div class="login-label-row">
+            <span class="login-label">No camera? Enter the UPI ID</span>
+          </div>
+          <input id="qr-manual-vpa" class="login-input vpa" type="text"
+                 autocapitalize="off" autocorrect="off" spellcheck="false"
+                 placeholder="merchant@bank" />
+          <input id="qr-manual-amt" class="login-input" type="text" inputmode="decimal"
+                 placeholder="Amount ₹" />
+          <button class="primary-btn" id="btn-qr-manual-go">
+            <span>Continue</span><span class="btn-arrow">→</span>
+          </button>
+        </div>
+      </div><!-- /screen-qr -->
 
       <!-- ══════════════════════════════ VOICE SCREEN ════════════════════ -->
       <div class="screen" id="screen-voice">
@@ -696,6 +772,43 @@
     </div><!-- /screen-container -->
 
     <!-- Bottom Navigation -->
+    <!-- ══════════════════════════════ ACCOUNT SHEET ═══════════════════ -->
+    <div class="account-sheet" id="account-sheet">
+      <div class="sheet-backdrop" id="sheet-backdrop"></div>
+      <div class="sheet-panel" role="dialog" aria-label="Account">
+        <div class="sheet-grip"></div>
+        <div class="sheet-head">
+          <div class="account-avatar" id="sheet-initial">K</div>
+          <div class="sheet-id">
+            <div class="sheet-name" id="sheet-name">—</div>
+            <div class="sheet-vpa" id="sheet-vpa">—</div>
+          </div>
+          <button class="sheet-close" id="btn-sheet-close" title="Close">✕</button>
+        </div>
+        <button class="sheet-action danger" id="btn-sign-out">
+          <span class="sheet-action-icon">⏻</span>
+          <div class="sheet-action-text">
+            <div class="sheet-action-title">Sign out</div>
+            <div class="sheet-action-sub">This device still remembers your UPI ID</div>
+          </div>
+        </button>
+        <button class="sheet-action" id="btn-reset-demo">
+          <span class="sheet-action-icon">🔄</span>
+          <div class="sheet-action-text">
+            <div class="sheet-action-title">Reset demo data</div>
+            <div class="sheet-action-sub">Restore the starting balances</div>
+          </div>
+        </button>
+        <button class="sheet-action" id="btn-forget-device">
+          <span class="sheet-action-icon">🗑️</span>
+          <div class="sheet-action-text">
+            <div class="sheet-action-title">Remove from this device</div>
+            <div class="sheet-action-sub">You will need to type your UPI ID again</div>
+          </div>
+        </button>
+      </div>
+    </div>
+
     <div class="bottom-nav">
       <div class="nav-brand">
         <div class="logo-icon"><span></span><span></span><span></span></div>
@@ -738,6 +851,6 @@
 <script src="config.js"></script>
 <script src="webauthn.js?v=1"></script>
 <script src="voicebio.js?v=voice-2"></script>
-<script src="app.js?v=voice-3"></script>
+<script src="app.js?v=rc-2"></script>
 </body>
 </html>
