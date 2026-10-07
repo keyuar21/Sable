@@ -1,0 +1,29 @@
+# Auth: credentials plus the speech stack.
+#
+# resemblyzer pulls torch, which is the bulk of this image. The CPU wheel index
+# keeps it to roughly a quarter of the CUDA build's size.
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.1
+httpx==0.27.0
+
+webauthn==3.0.0
+bcrypt==4.2.0
+python-multipart==0.0.9
+
+numpy>=1.24.0
+librosa>=0.10.0
+soundfile>=0.12.0
+webrtcvad-wheels>=2.0.10
+onnxruntime>=1.16.0
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# ECAPA-TDNN speaker embeddings — the primary backend. VoxCeleb EER around 1%
+# against roughly 5% for GE2E.
+speechbrain>=1.0.0
+
+# Kept as a fallback for machines where SpeechBrain cannot load.
+resemblyzer>=0.1.1

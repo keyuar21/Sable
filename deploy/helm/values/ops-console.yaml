@@ -1,0 +1,42 @@
+# Bank operations console — read-only back office. Renders the live journal,
+# per-bank trial balances and the cross-bank conservation check.
+image:
+  repository: upi-ops-console
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: ops-console
+  module: ops_console.ops_service:app
+  port: 5010
+
+replicaCount: 1
+
+app:
+  config:
+    service: ops-console
+    # NOTE: today the console opens each bank's SQLite file directly in
+    # read-only mode. That works on one host but not across pods — a pod cannot
+    # read another pod's volume. Before this runs in a cluster the console has
+    # to read over HTTP instead (each bank already exposes
+    # /ledger/trial-balance), or share a ReadWriteMany volume. Both options are
+    # left here; `mode` picks one.
+    mode: http            # http | sqlite
+    banks:
+      - code: MOCKBANK
+        label: Remitter Bank (payer side)
+        url: http://upi-payer-bank:5003
+        sqlite_path: /data/payer/payer_ledger.db
+      - code: MOCKBANK2
+        label: Beneficiary Bank (payee side)
+        url: http://upi-payee-bank:5004
+        sqlite_path: /data/payee/payee_ledger.db
+    refresh_secs: 2.5
+
+# The console exposes every account balance and has no auth of its own.
+# Keep it off any public ingress, or put an auth proxy in front.
+ingress:
+  enabled: false
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits:   { memory: 256Mi }

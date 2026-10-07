@@ -1,0 +1,52 @@
+# Auth — PIN hashes, WebAuthn passkeys and voice biometrics. Loads the
+# Resemblyzer encoder and the AASIST anti-spoof model on boot, which takes a
+# while: hence the startup probe and the larger memory ceiling.
+
+image:
+  repository: upi-auth
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: auth
+  module: mock_auth.auth_service:app
+  port: 5005
+
+replicaCount: 1
+
+app:
+  config:
+    service: auth
+    database:
+      path: /data/voice_biometrics.db
+    pin:
+      hash: bcrypt
+      max_attempts: 3
+      lockout_secs: 900
+    webauthn:
+      rp_id: upi-sim.local
+      rp_name: UPI Simulator
+      origin: https://upi-sim.local
+    voice:
+      model_dir: /opt/models
+      encoder: ecapa-tdnn        # resemblyzer kept only as a fallback
+      ecapa_cache: /opt/models/ecapa
+      antispoof: aasist
+      # A fresh random code per attempt is what stops a recorded playback.
+      challenge_ttl_secs: 120
+      enroll_samples: 3
+
+persistence:
+  enabled: true
+  mountPath: /data
+  size: 1Gi
+
+probes:
+  startup:
+    enabled: true
+    periodSeconds: 5
+    failureThreshold: 60    # up to 5 minutes to load the models
+
+resources:
+  requests: { cpu: 250m, memory: 768Mi }
+  limits:   { memory: 2Gi }
+

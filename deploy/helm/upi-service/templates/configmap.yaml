@@ -1,0 +1,24 @@
+{{/*
+The per-service runtime config.
+
+The key is "<service.name>.yaml" — psp.yaml, payer-bank.yaml and so on — and it
+is mounted into the container at {{ .Values.app.configMountPath }}. The app
+reads it through $APP_CONFIG. Everything under .Values.app.config is copied in
+verbatim, so a service can put whatever shape it likes in there without this
+chart needing to know about it.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "upi-service.configMapName" . }}
+  labels:
+    {{- include "upi-service.labels" . | nindent 4 }}
+data:
+  {{ include "upi-service.configName" . }}: |
+    # Rendered by Helm from values. Do not edit in-cluster — change the values
+    # file and run `helm upgrade`, which rolls the pods automatically.
+    {{- toYaml .Values.app.config | nindent 4 }}
+{{- range $filename, $content := .Values.app.extraFiles }}
+  {{ $filename }}: |
+    {{- $content | nindent 4 }}
+{{- end }}

@@ -1,0 +1,34 @@
+.git/
+.gitignore
+.github/
+
+# Secrets never belong in a build context.
+.env
+.env.*
+!.env.example
+
+# Local ledgers — the container gets an empty volume and seeds it on boot.
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+:memory:.ses
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+deploy/
+docs/
+tests/
+*.md
+!docker/*.md
+
+.DS_Store
+.idea/
+.vscode/
+*.log
+Screenshot*.png

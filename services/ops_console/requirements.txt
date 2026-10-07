@@ -1,0 +1,5 @@
+# Ops console: reads the ledgers and serves one static page. No HTTP client and
+# no database driver beyond the stdlib — it is deliberately the lightest image
+# in the stack.
+fastapi==0.111.0
+uvicorn[standard]==0.30.1

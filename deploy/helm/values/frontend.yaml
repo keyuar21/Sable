@@ -1,0 +1,72 @@
+# Customer app — static files. No Python here; nginx serves the bundle, so the
+# chart's uvicorn entrypoint is replaced wholesale by `command`.
+image:
+  repository: upi-frontend
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: frontend
+  module: ""          # not a uvicorn service
+  port: 8080
+
+replicaCount: 2
+
+
+command: ["nginx", "-g", "daemon off;"]
+
+app:
+  config:
+    service: frontend
+    features:
+      voice_payments: true
+      device_binding: true
+
+  # The browser cannot read a mounted YAML file, so the frontend's real config
+  # ships as a JavaScript file mounted straight into the web root. These are
+  # public URLs reached from the user's browser, not in-cluster service names.
+  extraFiles:
+    config.js: |
+      window.__UPI_CONFIG__ = {
+        psp:       'https://api.upi-sim.local/psp',
+        switch:    'https://api.upi-sim.local/switch',
+        payerBank: 'https://api.upi-sim.local/payer',
+        payeeBank: 'https://api.upi-sim.local/payee',
+        auth:      'https://api.upi-sim.local/auth',
+      };
+
+extraVolumes:
+  - name: webconfig
+    configMap:
+      name: upi-frontend-config
+extraVolumeMounts:
+  - name: webconfig
+    mountPath: /usr/share/nginx/html/config.js
+    subPath: config.js
+    readOnly: true
+
+probes:
+  path: /
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101        # nginx-unprivileged
+  runAsGroup: 101
+  fsGroup: 101
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: upi-sim.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests: { cpu: 25m, memory: 64Mi }
+  limits:   { memory: 128Mi }

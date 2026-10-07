@@ -1,0 +1,43 @@
+# Remitter bank — holds payer accounts. Owns payer_ledger.db, which is the
+# source of truth for every payer balance.
+image:
+  repository: upi-payer-bank
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: payer-bank
+  module: mock_payer_bank.bank_service:app
+  port: 5003
+
+replicaCount: 1   # ReadWriteOnce volume: exactly one writer
+
+app:
+  config:
+    service: payer-bank
+    bank_code: MOCKBANK
+    database:
+      path: /data/payer_ledger.db
+      journal_mode: WAL
+      busy_timeout_ms: 30000
+    ledger:
+      # Every posting is integer paise. Balances are SUM(CR)-SUM(DR) over
+      # `postings`; accounts.balance is only a cache.
+      currency: INR
+      hold_ttl_secs: 300
+      assert_books_balance_on_boot: true
+    auth:
+      url: http://upi-auth:5005
+      # The raw-PIN debit path is legacy; step-up tokens are the real one.
+      allow_legacy_pin: false
+      max_pin_attempts: 3
+
+persistence:
+  enabled: true
+  mountPath: /data
+  size: 2Gi
+
+existingSecret: upi-supabase
+
+resources:
+  requests: { cpu: 100m, memory: 192Mi }
+  limits:   { memory: 512Mi }

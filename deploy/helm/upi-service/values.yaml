@@ -1,0 +1,161 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# upi-service — shared chart defaults
+#
+# Nothing here is service-specific. Each microservice supplies its own file in
+# deploy/helm/values/<service>.yaml and overrides only what differs:
+#
+#   helm upgrade --install upi-psp deploy/helm/upi-service \
+#     -f deploy/helm/values/psp.yaml
+#
+# The per-service runtime config (app.config below) is rendered into a
+# ConfigMap under the key "<service.name>.yaml" and mounted into the container.
+# Changing it triggers a rollout, because the Deployment carries a checksum of
+# the rendered ConfigMap.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# -- Override the chart name portion of resource names.
+nameOverride: ""
+# -- Replace the generated resource name entirely.
+fullnameOverride: ""
+
+# ── Identity ────────────────────────────────────────────────────────────────
+service:
+  # -- Short service name. REQUIRED. Also the default ConfigMap key stem.
+  name: ""
+  # -- uvicorn target, e.g. "mock_psp.psp_service:app". Required unless command is set.
+  module: ""
+  # -- Port the container listens on and the Service exposes.
+  port: 8000
+  type: ClusterIP
+  annotations: {}
+  # -- Extra ports, e.g. a metrics port.
+  extraPorts: []
+
+replicaCount: 1
+
+image:
+  repository: upi-simulator
+  # -- Defaults to .Chart.AppVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# -- Overrides the default uvicorn entrypoint entirely when set.
+command: []
+args: []
+
+# ── Runtime configuration file ──────────────────────────────────────────────
+app:
+  # -- ConfigMap key and mounted filename. Defaults to "<service.name>.yaml".
+  configName: ""
+  # -- Directory the config file is mounted into.
+  configMountPath: /etc/upi
+  # -- Env var pointing the app at the mounted file.
+  configPathEnv: APP_CONFIG
+  # -- Free-form YAML, rendered verbatim into the ConfigMap. Per-service.
+  config: {}
+  # -- Extra files to place in the same ConfigMap, as {filename: content}.
+  extraFiles: {}
+
+# ── Environment ─────────────────────────────────────────────────────────────
+# -- Plain env vars as {name: value}.
+env: {}
+# -- Raw env entries when you need valueFrom.
+envRaw: []
+# -- envFrom sources (configMapRef / secretRef).
+envFrom: []
+
+secret:
+  # -- Create a Secret from the map below. Keep real credentials out of git;
+  #    prefer existingSecret and an external secret manager.
+  create: false
+  data: {}
+# -- Name of a pre-existing Secret to load as envFrom.
+existingSecret: ""
+
+# ── Storage ─────────────────────────────────────────────────────────────────
+# The bank services keep their SQLite ledger on disk. That file is the source
+# of truth, so it must outlive the pod.
+persistence:
+  enabled: false
+  mountPath: /data
+  size: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClass: ""
+  # -- Bind to an existing PVC instead of creating one.
+  existingClaim: ""
+
+extraVolumes: []
+extraVolumeMounts: []
+
+# ── Health ──────────────────────────────────────────────────────────────────
+probes:
+  path: /health
+  liveness:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  startup:
+    # -- Enable for slow-booting services (the auth service loads voice models).
+    enabled: false
+    periodSeconds: 5
+    failureThreshold: 60
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+# ── Scheduling and safety ───────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 75
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+terminationGracePeriodSeconds: 30
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []

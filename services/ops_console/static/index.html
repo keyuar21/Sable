@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bank Operations Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0b; --panel:#131315; --panel2:#1a1a1d; --line:rgba(255,255,255,.09);
+    --line2:rgba(255,255,255,.16);
+    --txt:#f2efe9; --txt2:rgba(242,239,233,.62); --txt3:rgba(242,239,233,.38);
+    --dr:#ee6b68;    /* debits  — money leaving an account */
+    --cr:#6fcf8f;    /* credits — money arriving */
+    --accent:#e84743; --warn:#e6c16d; --info:#7aa7ff;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:'DM Sans',system-ui,sans-serif;
+       font-size:14px;line-height:1.5;padding:22px;min-height:100vh}
+  a{color:inherit}
+
+  header{display:flex;align-items:flex-start;justify-content:space-between;
+         gap:20px;flex-wrap:wrap;margin-bottom:22px}
+  h1{font-size:21px;font-weight:700;letter-spacing:-.6px}
+  .sub{color:var(--txt3);font-size:12.5px;margin-top:3px;max-width:62ch}
+  .live{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--txt3);
+        letter-spacing:.6px;white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--cr);
+       box-shadow:0 0 9px var(--cr);animation:pulse 2s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+
+  .grid{display:grid;gap:14px}
+  .cols-2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .panel-head{padding:12px 16px;border-bottom:1px solid var(--line);
+              display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .panel-title{font-size:13px;font-weight:700;letter-spacing:-.2px}
+  .panel-note{font-size:11px;color:var(--txt3)}
+  .panel-body{padding:14px 16px}
+
+  /* Conservation banner */
+  .hero{border-radius:14px;padding:18px 20px;margin-bottom:14px;border:1px solid var(--line)}
+  .hero.ok{background:linear-gradient(120deg,rgba(111,207,143,.12),rgba(111,207,143,.03));
+           border-color:rgba(111,207,143,.34)}
+  .hero.flight{background:linear-gradient(120deg,rgba(230,193,109,.12),rgba(230,193,109,.03));
+               border-color:rgba(230,193,109,.34)}
+  .hero-label{font-size:10.5px;letter-spacing:1.4px;color:var(--txt3);font-weight:700}
+  .hero-value{font-family:var(--mono);font-size:32px;font-weight:700;margin:6px 0 4px}
+  .hero.ok .hero-value{color:var(--cr)} .hero.flight .hero-value{color:var(--warn)}
+  .hero-exp{font-size:12.5px;color:var(--txt2);max-width:78ch}
+  .formula{font-family:var(--mono);font-size:12px;color:var(--txt3);margin-top:9px}
+
+  /* Stat strip */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .stat-k{font-size:10px;letter-spacing:1.1px;color:var(--txt3);font-weight:700}
+  .stat-v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:4px}
+
+  /* Fixed layout so the amount column is never squeezed out by a long VPA —
+     the account name truncates instead. */
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th:first-child,td:first-child{width:84px}
+  th:last-child,td:last-child{width:106px}
+  td:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  th{text-align:left;font-size:10px;letter-spacing:1px;color:var(--txt3);
+     font-weight:700;padding:7px 10px;border-bottom:1px solid var(--line)}
+  td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.045);font-size:12.5px;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:rgba(255,255,255,.028)}
+  .num{font-family:var(--mono);text-align:right;white-space:nowrap}
+  .mono{font-family:var(--mono);font-size:11.5px}
+
+  .tag{display:inline-block;padding:2px 7px;border-radius:5px;font-size:9.5px;
+       font-weight:700;letter-spacing:.6px}
+  .t-CUSTOMER{background:rgba(122,167,255,.16);color:var(--info)}
+  .t-MERCHANT{background:rgba(167,139,250,.18);color:#c3aefd}
+  .t-POOL{background:rgba(230,193,109,.18);color:var(--warn)}
+  .t-NOSTRO{background:rgba(111,207,143,.15);color:var(--cr)}
+  .t-SUSPENSE,.t-OPENING,.t-PENALTY,.t-INCOME{background:rgba(255,255,255,.07);color:var(--txt3)}
+
+  .ev{display:inline-block;padding:2px 7px;border-radius:5px;font-size:9.5px;font-weight:700}
+  .ev-DEBIT_LEG{background:rgba(238,107,104,.17);color:var(--dr)}
+  .ev-CREDIT_LEG{background:rgba(111,207,143,.17);color:var(--cr)}
+  .ev-REVERSAL{background:rgba(230,193,109,.19);color:var(--warn)}
+  .ev-OPENING_BALANCE{background:rgba(255,255,255,.07);color:var(--txt3)}
+  .ev-SETTLEMENT{background:rgba(122,167,255,.17);color:var(--info)}
+
+  .dr{color:var(--dr)} .cr{color:var(--cr)}
+  .ok{color:var(--cr)} .bad{color:var(--dr)}
+
+  /* Journal entry card — shows DR and CR side by side */
+  .entry{border:1px solid var(--line);border-radius:11px;margin-bottom:9px;overflow:hidden;
+         background:var(--panel2)}
+  .entry-top{display:flex;align-items:center;gap:9px;padding:9px 12px;flex-wrap:wrap;
+             border-bottom:1px solid var(--line)}
+  .entry-narr{font-size:12px;color:var(--txt2);flex:1;min-width:190px}
+  .entry-time{font-family:var(--mono);font-size:10.5px;color:var(--txt3)}
+  .legs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:10px 12px}
+  .leg{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .leg-acct{font-family:var(--mono);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .leg-amt{font-family:var(--mono);font-size:14px;font-weight:700}
+  .leg-dir{font-size:9.5px;letter-spacing:1px;font-weight:700;color:var(--txt3)}
+  .arrow{font-size:17px;color:var(--txt3)}
+  .balcheck{padding:5px 12px;font-size:10.5px;font-family:var(--mono);
+            border-top:1px solid var(--line);background:rgba(111,207,143,.05);color:var(--cr)}
+  .balcheck.bad{background:rgba(238,107,104,.08);color:var(--dr)}
+
+  input[type=text]{background:var(--panel2);border:1px solid var(--line2);border-radius:9px;
+    color:var(--txt);padding:8px 11px;font-family:var(--mono);font-size:12px;outline:none;width:260px}
+  input[type=text]:focus{border-color:var(--accent)}
+  button{background:var(--accent);border:none;border-radius:9px;color:#fff;padding:8px 15px;
+    font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid var(--line2);color:var(--txt2)}
+  button:hover{filter:brightness(1.12)}
+
+  .empty{padding:26px;text-align:center;color:var(--txt3);font-size:12.5px}
+  .err{color:var(--dr);font-size:12px;padding:10px 0}
+  footer{margin-top:22px;color:var(--txt3);font-size:11.5px;line-height:1.7}
+  code{font-family:var(--mono);background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px}
+  @media (max-width:640px){ .legs{grid-template-columns:1fr} .arrow{display:none} body{padding:14px} }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Bank Operations Console</h1>
+    <p class="sub">
+      Read-only back-office view. Every figure is a live <code>SUM</code> over the
+      <code>postings</code> table in each bank's own SQLite ledger — nothing here is cached or mocked.
+    </p>
+  </div>
+  <div class="live"><span class="dot"></span><span id="tick">connecting…</span></div>
+</header>
+
+<div id="hero"></div>
+<div class="stats" id="stats"></div>
+
+<div class="grid cols-2" style="margin-bottom:14px">
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Remitter Bank — MOCKBANK</span>
+      <span class="panel-note">payer side</span>
+    </div>
+    <div class="panel-body" id="bank-MOCKBANK"><div class="empty">loading…</div></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Beneficiary Bank — MOCKBANK2</span>
+      <span class="panel-note">payee side</span>
+    </div>
+    <div class="panel-body" id="bank-MOCKBANK2"><div class="empty">loading…</div></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head">
+    <span class="panel-title">Trace a transaction across both banks</span>
+    <span class="panel-note">the debit leg and the credit leg live on different books</span>
+  </div>
+  <div class="panel-body">
+    <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
+      <input type="text" id="trace-input" placeholder="txn id, e.g. FLOW-12345" autocomplete="off">
+      <button id="trace-btn">Trace</button>
+      <button class="ghost" id="trace-latest">Use latest</button>
+    </div>
+    <div id="trace-out"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <span class="panel-title">Live journal</span>
+    <span class="panel-note">every entry must balance: total DR = total CR</span>
+  </div>
+  <div class="panel-body" id="journal"><div class="empty">loading…</div></div>
+</div>
+
+<footer>
+  <strong>How to read this.</strong>
+  A <span class="dr">DR</span> reduces a customer or merchant account; a
+  <span class="cr">CR</span> increases it. A UPI payment is two
+  <em>separate</em> entries on two <em>separate</em> banks: the remitter posts
+  <code>DR customer / CR POOL</code>, and the beneficiary posts
+  <code>DR POOL / CR merchant</code>. No entry ever spans two banks — that is why
+  the two pool balances must cancel, and why a failed credit leg leaves the money
+  recoverable in the remitter's pool instead of destroying it.
+</footer>
+
+<script>
+const API = location.origin;
+const money = n => '₹' + Number(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const short = t => (t || '').slice(11, 19);
+
+async function getJSON(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+function renderHero(sys) {
+  const ok = sys.reconciled;
+  document.getElementById('hero').innerHTML = `
+    <div class="hero ${ok ? 'ok' : 'flight'}">
+      <div class="hero-label">SYSTEM-WIDE CONSERVATION CHECK</div>
+      <div class="hero-value">${money(sys.net_pool_position)}</div>
+      <div class="hero-exp">${
+        ok ? 'Every rupee that left a payer has reached a payee. The two pool accounts cancel exactly — no value is in flight and nothing is unreconciled.'
+           : 'Value is currently in flight between the banks: debited from a payer but not yet credited to a payee. If this does not return to zero, it is a reconciliation break and the funds are sitting in a pool awaiting reversal or settlement.'
+      }</div>
+      <div class="formula">MOCKBANK:POOL + MOCKBANK2:POOL = ${money(sys.net_pool_position)} ${ok ? '✓' : '← should be ₹0.00'}</div>
+    </div>`;
+}
+
+function renderStats(d) {
+  const cells = [];
+  for (const b of d.banks) {
+    if (!b.online) { cells.push(`<div class="stat"><div class="stat-k">${b.bank_code}</div><div class="stat-v bad">offline</div></div>`); continue; }
+    cells.push(`<div class="stat"><div class="stat-k">${b.bank_code} CUSTOMER FUNDS</div><div class="stat-v">${money(b.customer_total)}</div></div>`);
+    cells.push(`<div class="stat"><div class="stat-k">${b.bank_code} POOL</div><div class="stat-v" style="color:var(--warn)">${money(b.pool_balance)}</div></div>`);
+    cells.push(`<div class="stat"><div class="stat-k">${b.bank_code} BOOKS</div><div class="stat-v ${b.integrity.balanced?'ok':'bad'}">${b.integrity.balanced?'DR = CR':'CORRUPT'}</div></div>`);
+  }
+  document.getElementById('stats').innerHTML = cells.join('');
+}
+
+function renderBank(b) {
+  const el = document.getElementById('bank-' + b.bank_code);
+  if (!el) return;
+  if (!b.online) { el.innerHTML = `<div class="err">Ledger file not found — is the stack running?</div>`; return; }
+  if (!b.integrity.balanced) {
+    el.innerHTML = `<div class="err">LEDGER CORRUPT — ${esc(b.integrity.error)}</div>`;
+    return;
+  }
+  const order = ['CUSTOMER','MERCHANT','POOL','NOSTRO','SUSPENSE','OPENING','INCOME','PENALTY'];
+  let rows = '';
+  for (const type of order) {
+    for (const a of (b.accounts_by_type[type] || [])) {
+      if (a.balance === 0 && !['POOL','NOSTRO'].includes(type)) continue;
+      rows += `<tr>
+        <td><span class="tag t-${type}">${type}</span></td>
+        <td class="mono">${esc(a.vpa || a.account_id.split(':')[1])}</td>
+        <td class="num" style="${a.balance < 0 ? 'color:var(--warn)' : ''}">${money(a.balance)}</td>
+      </tr>`;
+    }
+  }
+  el.innerHTML = `
+    <table><thead><tr><th>TYPE</th><th>ACCOUNT</th><th class="num">BALANCE</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="3" class="empty">no accounts</td></tr>'}</tbody></table>
+    <div style="margin-top:10px;font-size:11px;color:var(--txt3);font-family:var(--mono)">
+      ${b.entry_count} journal entries · ${b.posting_count} postings · books balanced ✓
+    </div>`;
+}
+
+function legHTML(l) {
+  return `<div class="leg">
+    <span class="leg-dir ${l.direction==='DR'?'dr':'cr'}">${l.direction === 'DR' ? 'DEBIT' : 'CREDIT'}</span>
+    <span class="leg-acct">${esc(l.account_id)}</span>
+    <span class="leg-amt ${l.direction==='DR'?'dr':'cr'}">${money(l.amount)}</span>
+  </div>`;
+}
+
+function entryHTML(e, showBank = true) {
+  const drs = e.legs.filter(l => l.direction === 'DR');
+  const crs = e.legs.filter(l => l.direction === 'CR');
+  const total = drs.reduce((s,l)=>s+l.amount, 0);
+  return `<div class="entry">
+    <div class="entry-top">
+      <span class="ev ev-${e.event_type}">${e.event_type.replace('_',' ')}</span>
+      ${showBank ? `<span class="mono" style="color:var(--txt3)">${e.bank_code}</span>` : ''}
+      <span class="entry-narr">${esc(e.narration)}</span>
+      ${e.reverses ? `<span class="mono" style="color:var(--warn)">reverses ${esc(e.reverses.slice(0,14))}…</span>` : ''}
+      <span class="entry-time">${short(e.posted_at)}</span>
+    </div>
+    <div class="legs">
+      <div>${drs.map(legHTML).join('')}</div>
+      <div class="arrow">→</div>
+      <div>${crs.map(legHTML).join('')}</div>
+    </div>
+    <div class="balcheck ${e.balanced === false ? 'bad' : ''}">
+      ${e.balanced === false ? '✗ ENTRY DOES NOT BALANCE' : `✓ DR ${money(total)} = CR ${money(total)}`}
+    </div>
+  </div>`;
+}
+
+let latestTxn = null;
+
+async function refresh() {
+  try {
+    const [ov, jr] = await Promise.all([getJSON('/api/overview'), getJSON('/api/journal?limit=25')]);
+    renderHero(ov.system); renderStats(ov); ov.banks.forEach(renderBank);
+
+    const real = jr.entries.filter(e => e.event_type !== 'OPENING_BALANCE');
+    if (real.length) latestTxn = real[0].txn_ref;
+    document.getElementById('journal').innerHTML =
+      jr.entries.length ? jr.entries.map(e => entryHTML(e)).join('')
+                        : '<div class="empty">No journal entries yet — make a payment in the app.</div>';
+
+    document.getElementById('tick').textContent = 'live · ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById('tick').textContent = 'error: ' + e.message;
+  }
+}
+
+async function doTrace(ref) {
+  const out = document.getElementById('trace-out');
+  if (!ref) { out.innerHTML = '<div class="empty">Enter a transaction id.</div>'; return; }
+  out.innerHTML = '<div class="empty">tracing…</div>';
+  try {
+    const d = await getJSON('/api/trace/' + encodeURIComponent(ref));
+    let html = '';
+    for (const [code, bank] of Object.entries(d.banks)) {
+      if (!bank.entries.length) continue;
+      const t = bank.transaction_row;
+      html += `<div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;margin-bottom:7px">
+          ${code} <span style="color:var(--txt3);font-weight:400">— ${esc(bank.label)}</span>
+          ${t ? `<span class="mono" style="color:var(--txt3)"> · status: ${esc(t.status)}</span>` : ''}
+        </div>
+        ${bank.entries.map(e => entryHTML({...e, bank_code: code, balanced: true}, false)).join('')}
+      </div>`;
+    }
+    out.innerHTML = html || '<div class="empty">No entries found.</div>';
+  } catch (e) {
+    out.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+document.getElementById('trace-btn').onclick = () => doTrace(document.getElementById('trace-input').value.trim());
+document.getElementById('trace-input').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('trace-btn').click(); });
+document.getElementById('trace-latest').onclick = () => {
+  if (!latestTxn) return;
+  document.getElementById('trace-input').value = latestTxn;
+  doTrace(latestTxn);
+};
+
+refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>

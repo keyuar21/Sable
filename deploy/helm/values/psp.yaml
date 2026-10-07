@@ -1,0 +1,43 @@
+# PSP — the orchestrator. Drives the payment through the switch and both banks,
+# runs the 30s settlement cycle and the 20s reconciliation sweep.
+
+image:
+  repository: upi-psp
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: psp
+  module: mock_psp.psp_service:app
+  port: 5001
+
+replicaCount: 1   # settlement and recon are singleton timers — see note below
+
+app:
+  config:
+    service: psp
+    peers:
+      switch:     http://upi-switch:5002
+      payer_bank: http://upi-payer-bank:5003
+      payee_bank: http://upi-payee-bank:5004
+      auth:       http://upi-auth:5005
+    settlement:
+      interval_secs: 30
+      # Only payments whose BOTH legs completed enter a cycle. A debit with no
+      # matching credit stays in the pool where a reversal can still reach it.
+      require_matched_legs: true
+    reconciliation:
+      # Retries payments left unconfirmed because a bank was unreachable.
+      sweep_interval_secs: 20
+    limits:
+      max_daily_per_vpa: 100000
+      max_per_txn: 100000
+    voice:
+      piper_data_dir: /opt/models/piper
+
+# Supabase is a reporting mirror only; nothing reads back from it to decide.
+existingSecret: upi-supabase
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { memory: 768Mi }
+

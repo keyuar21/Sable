@@ -1,0 +1,5 @@
+# NPCI switch: routing only. httpx is for the Supabase reporting mirror.
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.1
+httpx==0.27.0

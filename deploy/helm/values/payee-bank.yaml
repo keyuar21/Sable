@@ -1,0 +1,38 @@
+# Beneficiary bank — holds merchant accounts. Owns payee_ledger.db.
+image:
+  repository: upi-payee-bank
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: payee-bank
+  module: mock_payee_bank.bank_service:app
+  port: 5004
+
+replicaCount: 1   # ReadWriteOnce volume: exactly one writer
+
+app:
+  config:
+    service: payee-bank
+    bank_code: MOCKBANK2
+    database:
+      path: /data/payee_ledger.db
+      journal_mode: WAL
+      busy_timeout_ms: 30000
+    ledger:
+      currency: INR
+      assert_books_balance_on_boot: true
+    settlement:
+      # This bank fronts money to merchants out of its pool, so its pool runs
+      # negative until the cycle reimburses it: DR NOSTRO / CR POOL.
+      direction: receiver
+
+persistence:
+  enabled: true
+  mountPath: /data
+  size: 2Gi
+
+existingSecret: upi-supabase
+
+resources:
+  requests: { cpu: 100m, memory: 192Mi }
+  limits:   { memory: 512Mi }

@@ -5,12 +5,16 @@
 'use strict';
 
 // ── API base URLs ─────────────────────────────────────────────────────────────
+// Read from config.js, which is mounted from the Helm ConfigMap in a container
+// and ships with localhost defaults for local development. Falling back per key
+// means a partial config still works.
+const RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
 const API = {
-  psp:       'http://localhost:5001',
-  switch:    'http://localhost:5002',
-  payerBank: 'http://localhost:5003',
-  payeeBank: 'http://localhost:5004',
-  auth:      'http://localhost:5005',
+  psp:       RUNTIME.psp       || 'http://localhost:5001',
+  switch:    RUNTIME.switch    || 'http://localhost:5002',
+  payerBank: RUNTIME.payerBank || 'http://localhost:5003',
+  payeeBank: RUNTIME.payeeBank || 'http://localhost:5004',
+  auth:      RUNTIME.auth      || 'http://localhost:5005',
 };
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -65,8 +69,78 @@ const MERCHANTS = {
   'petrolpump':   { vpa: 'petrolpump@mockbank2',  name: 'HP Petrol Pump', icon: '⛽' },
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+// ── Device binding ────────────────────────────────────────────────────────────
+// This browser stands in for the handset. Only accounts that have successfully
+// authenticated here are remembered, and only those are offered at sign-in —
+// so one user's device never reveals another user's VPA.
+const DEVICE_ACCOUNTS_KEY = 'upiSim.deviceAccounts.v1';
+
+function getDeviceAccounts() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DEVICE_ACCOUNTS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(a => a && typeof a.vpa === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberDeviceAccount(vpa, holderName) {
+  if (!vpa) return;
+  const accounts = getDeviceAccounts().filter(a => a.vpa !== vpa);
+  accounts.unshift({ vpa, holder_name: holderName || vpa });
+  try {
+    localStorage.setItem(DEVICE_ACCOUNTS_KEY, JSON.stringify(accounts));
+  } catch (e) {
+    console.warn('Could not persist device account binding:', e);
+  }
+}
+
+function forgetDeviceAccount(vpa) {
+  try {
+    localStorage.setItem(
+      DEVICE_ACCOUNTS_KEY,
+      JSON.stringify(getDeviceAccounts().filter(a => a.vpa !== vpa))
+    );
+  } catch { /* storage unavailable */ }
+}
+
 // ── Screen navigation ─────────────────────────────────────────────────────────
+
+// Screens reachable before anyone has signed in.
+const PUBLIC_SCREENS = new Set(['login', 'onboarding']);
+// Reachable once the PIN/biometric check passed but voice ID is not yet set up.
+const PENDING_SCREENS = new Set(['voice-enroll']);
+
+// The session is only fully unlocked after BOTH gates: credential + voice ID.
+function isUnlocked() {
+  return state.loggedIn && state.voiceEnrolled;
+}
+
+// Nav chrome is hidden *and* inert until the session is unlocked, so the
+// bottom nav / sidebar cannot be used to walk straight into the app.
+function syncAuthChrome() {
+  const unlocked = isUnlocked();
+  document.querySelector('.bottom-nav')?.classList.toggle('locked', !unlocked);
+  document.getElementById('header-avatar')?.classList.toggle('hidden', !state.loggedIn);
+}
+
 function showScreen(name) {
+  // Route guard: never render a protected screen for an unauthenticated session.
+  if (!PUBLIC_SCREENS.has(name)) {
+    if (!state.loggedIn) {
+      name = 'login';
+    } else if (!state.voiceEnrolled && !PENDING_SCREENS.has(name)) {
+      name = 'voice-enroll';
+    }
+  }
+
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const screen = document.getElementById(`screen-${name}`);
   if (screen) screen.classList.add('active');
@@ -76,6 +150,16 @@ function showScreen(name) {
   const navMap = { home: 'nav-home', history: 'nav-history', settlement: 'nav-settlement', voice: 'nav-voice' };
   const navId = navMap[name];
   if (navId) document.getElementById(navId)?.classList.add('active');
+
+  syncAuthChrome();
+}
+
+// Drop the session and return to the sign-in screen.
+function signOut() {
+  state.loggedIn = false;
+  state.voiceEnrolled = false;
+  state.localTxns = [];
+  showScreen('login');
 }
 
 // ── Live clock ────────────────────────────────────────────────────────────────
@@ -135,6 +219,7 @@ function parseIntent(text) {
 
 // ── Voice input ───────────────────────────────────────────────────────────────
 function startVoiceInput() {
+  if (!isUnlocked()) return showScreen('login');
   showScreen('voice');
   const waveform     = document.getElementById('waveform');
   const micBtn       = document.getElementById('voice-mic-btn');
@@ -270,7 +355,8 @@ function showConfirm(merchant, amount) {
   }
 }
 
-/** Voice = payment PIN: challenge code + live speaker match → pay; else fail. */
+/** Voice authorises the payment: one-time code + live speaker match. The
+    spoken code is a random nonce — the UPI PIN is never spoken. */
 async function authorizePaymentWithVoice() {
   if (state.voiceConfirmBusy) return;
   if (!state.voiceEnrolled) {
@@ -347,6 +433,8 @@ async function authorizePaymentWithVoice() {
   }
 }
 
+const ENROLL_SAMPLES = 5;   // more samples -> a tighter voiceprint and a better threshold
+
 // ── Voice enrollment (mandatory after login) ──────────────────────────────────
 async function startVoiceEnrollment() {
   state.voiceEnroll = {
@@ -369,7 +457,7 @@ async function startVoiceEnrollment() {
     state.voiceEnroll.phrase = challenge.phrase;
     updateEnrollUI();
     await speakPrompt(
-      `Voice ID setup. Say: my voice is my payment PIN, then code ${challenge.digits.split('').join(' ')}`
+      `Voice ID setup. Say: my voice is my key, then code ${challenge.digits.split('').join(' ')}`
     );
   } catch (e) {
     document.getElementById('voice-enroll-error').textContent = e.message || String(e);
@@ -384,8 +472,8 @@ function updateEnrollUI() {
   const phrase = state.voiceEnroll.phrase || `${ENROLL_BASE_PHRASE}. Code ${code}`;
   document.getElementById('voice-enroll-phrase').textContent = `“${phrase}”`;
   document.getElementById('voice-enroll-status').textContent =
-    step < 3
-      ? `Sample ${step + 1} of 3 — say the phrase + code ${code} (live mic only)`
+    step < ENROLL_SAMPLES
+      ? `Sample ${step + 1} of ${ENROLL_SAMPLES} — say the phrase + code ${code} (live mic only)`
       : 'Uploading voiceprint + anti-spoof checks…';
 
   document.querySelectorAll('.voice-enroll-step').forEach((el) => {
@@ -396,13 +484,13 @@ function updateEnrollUI() {
 
   const btn = document.getElementById('btn-voice-enroll-record');
   if (btn) {
-    btn.disabled = state.voiceEnroll.recording || step >= 3 || !state.voiceEnroll.challengeId;
-    btn.textContent = step >= 3 ? 'Saving…' : `🎤 Record sample ${step + 1} of 3`;
+    btn.disabled = state.voiceEnroll.recording || step >= ENROLL_SAMPLES || !state.voiceEnroll.challengeId;
+    btn.textContent = step >= ENROLL_SAMPLES ? 'Saving…' : `🎤 Record sample ${step + 1} of ${ENROLL_SAMPLES}`;
   }
 }
 
 async function recordEnrollSample() {
-  if (state.voiceEnroll.recording || state.voiceEnroll.step >= 3) return;
+  if (state.voiceEnroll.recording || state.voiceEnroll.step >= ENROLL_SAMPLES) return;
   if (!state.voiceEnroll.challengeId) {
     document.getElementById('voice-enroll-error').textContent = 'Challenge not ready — wait a moment.';
     return;
@@ -431,7 +519,7 @@ async function recordEnrollSample() {
     state.voiceEnroll.step += 1;
     wave?.classList.add('idle');
 
-    if (state.voiceEnroll.step >= 3) {
+    if (state.voiceEnroll.step >= ENROLL_SAMPLES) {
       document.getElementById('voice-enroll-status').textContent = 'Creating voice biometric (Resemblyzer + AASIST)…';
       try {
         await enrollVoiceBiometric(
@@ -476,7 +564,7 @@ async function recordEnrollSample() {
   } finally {
     window.__onVoiceTranscript = null;
     state.voiceEnroll.recording = false;
-    if (state.voiceEnroll.step < 3) updateEnrollUI();
+    if (state.voiceEnroll.step < ENROLL_SAMPLES) updateEnrollUI();
   }
 }
 
@@ -610,7 +698,7 @@ async function pollTxnStatus(txnId) {
       const data = await res.json();
       updateProcessingUI(data);
 
-      const terminal = ['success', 'settled', 'failed', 'timeout', 'partial_failure'];
+      const terminal = ['success', 'settled', 'failed', 'timeout', 'partial_failure', 'reversed'];
       if (terminal.includes(data.status)) {
         clearInterval(state.pollInterval);
 
@@ -618,6 +706,9 @@ async function pollTxnStatus(txnId) {
           await refreshBalance();
           setTimeout(() => showSuccess(data), 600);
         } else {
+          // A reversal means the money is already back — refresh so the
+          // balance the user sees reflects the refund.
+          if (data.status === 'reversed') await refreshBalance();
           setTimeout(() => showFailed(data.error || 'Unknown error', txnId, data.error_stage), 400);
         }
       }
@@ -639,7 +730,8 @@ function updateProcessingUI(data) {
     settled:         'Transaction settled ✓',
     failed:          'Transaction failed',
     timeout:         'Service timed out — checking status…',
-    partial_failure: 'Partial failure — reversal initiated',
+    reversed:        'Payment failed — amount refunded ✓',
+    partial_failure: 'Failed, and the refund did not go through — under investigation',
   };
   document.getElementById('processing-status-text').textContent =
     statusMessages[data.status] || `Status: ${data.status}`;
@@ -776,7 +868,9 @@ async function loadHistory(filter = 'all') {
     if (!txns.length) txns = state.localTxns.filter(t => !vpa || t.payer_vpa === vpa || t.payee_vpa === vpa);
 
     // Status filter
-    if (filter !== 'all') txns = txns.filter(t => t.status === filter || (filter === 'success' && t.status === 'settled'));
+    if (filter !== 'all') txns = txns.filter(t => t.status === filter
+      || (filter === 'success' && t.status === 'settled')
+      || (filter === 'failed' && ['reversed', 'partial_failure'].includes(t.status)));
 
     container.innerHTML = txns.length ? '' : `
       <div class="txn-empty">
@@ -800,7 +894,7 @@ function buildTxnItem(t) {
   div.className = 'txn-item';
 
   const icon = document.createElement('div');
-  icon.className = `txn-icon ${['success','settled','debited','credited'].includes(t.status) ? 'debit' : t.status === 'failed' ? 'debit' : 'pending'}`;
+  icon.className = `txn-icon ${['success','settled','debited','credited'].includes(t.status) ? 'debit' : ['failed','reversed'].includes(t.status) ? 'debit' : 'pending'}`;
   icon.textContent = t.payee_icon || getMerchantIcon(t.payee_vpa || t.payee_name) || '💳';
 
   const info = document.createElement('div');
@@ -981,7 +1075,8 @@ function formatTxnStatus(s) {
     failed:          '❌ Failed',
     timeout:         '⏰ Timed out',
     initiated:       '🔄 Initiated',
-    partial_failure: '⚠️ Partial failure',
+    reversed:        '↩️ Refunded',
+    partial_failure: '⚠️ Stuck — needs recon',
   };
   return map[s] || s;
 }
@@ -1034,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') handleTextInput();
   });
 
-    // Confirm / pay now — voice biometric is the payment PIN (no PIN/WebAuthn bypass)
+    // Confirm / pay now — voice biometric authorises (no PIN/WebAuthn bypass)
     document.getElementById('btn-pay-now').addEventListener('click', () => {
       authorizePaymentWithVoice();
     });
@@ -1071,11 +1166,48 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Login screen wiring ---
-  const loginSelect = document.getElementById('login-select');
   const loginPinInput = document.getElementById('login-pin');
   const loginPinBtn = document.getElementById('login-pin-btn');
   const loginBioBtn = document.getElementById('login-biometric-btn');
   const loginEnrollBtn = document.getElementById('login-enroll-btn');
+  const loginStatus = document.getElementById('login-status');
+  const accountList = document.getElementById('login-accounts');
+  const accountField = document.getElementById('login-account-field');
+  const vpaField = document.getElementById('login-vpa-field');
+  const vpaInput = document.getElementById('login-vpa');
+  const btnUseOtherVpa = document.getElementById('btn-use-other-vpa');
+  const btnCancelOtherVpa = document.getElementById('btn-cancel-other-vpa');
+
+  let selectedVpa = null;
+  let manualVpaMode = false;
+
+  function setLoginStatus(msg, kind = 'info') {
+    if (!loginStatus) return;
+    loginStatus.textContent = msg || '';
+    loginStatus.className = `login-status ${msg ? kind : ''}`;
+  }
+
+  function setLoginBusy(busy) {
+    [loginPinBtn, loginBioBtn, loginEnrollBtn].forEach(b => { if (b) b.disabled = busy; });
+  }
+
+  // Which VPA is this sign-in attempt for? Either a device-linked account the
+  // user tapped, or one they typed in full. There is no browsable directory.
+  function requireAccount() {
+    if (manualVpaMode) {
+      const typed = (vpaInput.value || '').trim().toLowerCase();
+      if (!typed || !typed.includes('@')) {
+        setLoginStatus('Enter your full UPI ID, e.g. yourname@bank.', 'error');
+        return null;
+      }
+      return typed;
+    }
+    if (!selectedVpa) {
+      setLoginStatus('Pick an account to sign in with.', 'error');
+      return null;
+    }
+    return selectedVpa;
+  }
 
   async function finishLogin(vpa) {
     try {
@@ -1095,11 +1227,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     state.loggedIn = true;
 
+    // Device binding: this browser now remembers only the accounts that have
+    // actually authenticated on it.
+    rememberDeviceAccount(state.user.vpa, state.user.name);
+
     const avatar = document.getElementById('header-avatar');
     if (avatar) {
       avatar.textContent = (state.user.name || vpa).charAt(0).toUpperCase();
-      avatar.title = state.user.vpa;
+      avatar.title = `${state.user.vpa} — click to sign out`;
     }
+    const balVpa = document.getElementById('balance-vpa');
+    if (balVpa) balVpa.textContent = state.user.vpa;
 
     // Most important gate: voice biometric must exist for this user
     const ok = await ensureVoiceEnrolledOrSetup(vpa);
@@ -1111,42 +1249,67 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (loginPinBtn) {
     loginPinBtn.addEventListener('click', async () => {
-      const vpa = loginSelect.value;
+      const vpa = requireAccount();
+      if (!vpa) return;
       const pin = loginPinInput.value.trim();
-      if (!pin) return alert('Enter PIN');
+      if (!pin) return setLoginStatus('Enter your UPI PIN.', 'error');
+      setLoginBusy(true);
+      setLoginStatus('Verifying PIN…', 'info');
       try {
         await authenticateWithPin(vpa, pin);
-        finishLogin(vpa);
+        setLoginStatus('Signed in — opening your account…', 'ok');
+        loginPinInput.value = '';
+        await finishLogin(vpa);
       } catch (e) {
-        alert('PIN login failed: ' + (e.message || e));
+        setLoginStatus(`PIN sign-in failed: ${e.message || e}`, 'error');
+      } finally {
+        setLoginBusy(false);
       }
     });
   }
 
+  if (loginPinInput) {
+    loginPinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') loginPinBtn?.click();
+    });
+    loginPinInput.addEventListener('input', () => setLoginStatus(''));
+  }
+
   if (loginBioBtn) {
     loginBioBtn.addEventListener('click', async () => {
-      const vpa = loginSelect.value;
+      const vpa = requireAccount();
+      if (!vpa) return;
+      setLoginBusy(true);
+      setLoginStatus('Waiting for Face ID / Touch ID…', 'info');
       try {
         await authenticateWithBiometric(vpa);
-        finishLogin(vpa);
+        setLoginStatus('Biometric verified — opening your account…', 'ok');
+        await finishLogin(vpa);
       } catch (e) {
-        alert('Biometric login failed: ' + (e.message || e));
+        setLoginStatus(`Biometric sign-in failed: ${e.message || e}`, 'error');
+      } finally {
+        setLoginBusy(false);
       }
     });
   }
 
   if (loginEnrollBtn) {
     loginEnrollBtn.addEventListener('click', async () => {
-      const vpa = loginSelect.value;
-      const label = prompt('Label for this device (e.g. "My iPhone")', 'My Device');
+      const vpa = requireAccount();
+      if (!vpa) return;
+      setLoginBusy(true);
+      setLoginStatus('Follow your device prompt to register this passkey…', 'info');
       try {
-        const res = await enrollBiometric(vpa, label || 'Unnamed device');
-        alert(res.message || 'Enrolled');
+        const res = await enrollBiometric(vpa, `${vpa} · this device`);
+        setLoginStatus(res.message || 'Biometric registered — you can now sign in with it.', 'ok');
       } catch (e) {
-        alert('Enrollment failed: ' + (e.message || e));
+        setLoginStatus(`Biometric setup failed: ${e.message || e}`, 'error');
+      } finally {
+        setLoginBusy(false);
       }
     });
   }
+
   document.getElementById('pin-backspace').addEventListener('click', handlePinBackspace);
 
   // History filter tabs
@@ -1169,32 +1332,83 @@ document.addEventListener('DOMContentLoaded', () => {
     showPin();
   });
 
-  // --- Dynamic accounts loader ---
-  async function loadAccountsList(selectVpa = null) {
-    const select = document.getElementById('login-select');
-    if (!select) return;
-    try {
-      const res = await fetch(`${API.payerBank}/accounts`);
-      if (res.ok) {
-        const accounts = await res.json();
-        if (accounts && accounts.length > 0) {
-          select.innerHTML = '';
-          accounts.forEach(acc => {
-            const opt = document.createElement('option');
-            opt.value = acc.vpa;
-            opt.textContent = `${acc.vpa} — ${acc.holder_name || acc.vpa}`;
-            select.appendChild(opt);
-          });
-          if (selectVpa) {
-            select.value = selectVpa;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Could not load dynamic accounts list:', e);
-    }
+  // --- Device-linked accounts ---------------------------------------------
+  // A real UPI app binds to the handset, so the sign-in screen may only offer
+  // accounts that have already authenticated in THIS browser. The frontend
+  // never asks the bank for a list of accounts — that would let anyone read
+  // every customer's VPA, name and balance off the login screen.
+
+  function selectAccount(vpa) {
+    selectedVpa = vpa;
+    accountList?.querySelectorAll('.account-card').forEach(c => {
+      c.classList.toggle('selected', c.dataset.vpa === vpa);
+      c.setAttribute('aria-pressed', String(c.dataset.vpa === vpa));
+    });
   }
-  loadAccountsList();
+
+  function setManualVpaMode(on, { focus = true } = {}) {
+    manualVpaMode = on;
+    vpaField.classList.toggle('hidden', !on);
+    accountField.classList.toggle('hidden', on);
+    // With no linked accounts there is nothing to go back to.
+    btnCancelOtherVpa.classList.toggle('hidden', !on || getDeviceAccounts().length === 0);
+    setLoginStatus('');
+    if (on && focus) vpaInput.focus();
+  }
+
+  function renderDeviceAccounts() {
+    const accounts = getDeviceAccounts();
+
+    if (accounts.length === 0) {
+      // Nothing bound to this device yet — go straight to typing a UPI ID.
+      setManualVpaMode(true, { focus: false });
+      return;
+    }
+
+    accountList.innerHTML = '';
+    accounts.forEach(acc => {
+      const name = acc.holder_name || acc.vpa;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'account-card';
+      card.dataset.vpa = acc.vpa;
+      card.innerHTML = `
+        <div class="account-avatar">${escapeHtml(name.charAt(0).toUpperCase())}</div>
+        <div class="account-info">
+          <div class="account-name">${escapeHtml(name)}</div>
+          <div class="account-vpa">${escapeHtml(acc.vpa)}</div>
+        </div>
+        <div class="account-radio"></div>`;
+      card.addEventListener('click', () => {
+        selectAccount(acc.vpa);
+        setLoginStatus('');
+        loginPinInput?.focus();
+      });
+      accountList.appendChild(card);
+    });
+
+    setManualVpaMode(false, { focus: false });
+    selectAccount(accounts[0].vpa);
+  }
+
+  document.getElementById('header-avatar')?.addEventListener('click', () => {
+    if (!state.loggedIn) return;
+    signOut();
+    loginPinInput.value = '';
+    renderDeviceAccounts();
+    setLoginStatus('Signed out. This device still remembers your UPI ID.', 'info');
+  });
+
+  btnUseOtherVpa?.addEventListener('click', () => setManualVpaMode(true));
+  btnCancelOtherVpa?.addEventListener('click', () => {
+    vpaInput.value = '';
+    setManualVpaMode(false);
+    renderDeviceAccounts();
+  });
+  vpaInput?.addEventListener('input', () => setLoginStatus(''));
+  vpaInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginPinBtn?.click(); });
+
+  renderDeviceAccounts();
 
   // --- Onboarding Flow Wiring ---
   const onboardState = {
@@ -1415,8 +1629,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         statusDiv.innerHTML = '<span style="color:var(--green);">🎉 Account linked successfully! Opening dashboard…</span>';
 
-        // 3. Reload account select and finish login
-        await loadAccountsList(onboardState.chosenVpa);
+        // 3. Bind the new account to this device, then finish login
+        rememberDeviceAccount(onboardState.chosenVpa, onboardState.name);
+        renderDeviceAccounts();
         setTimeout(() => {
           btnFinishOnboard.disabled = false;
           finishLogin(onboardState.chosenVpa);
@@ -1430,5 +1645,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Show login screen first — app starts periodic tasks after successful login
+  syncAuthChrome();
   showScreen('login');
 });

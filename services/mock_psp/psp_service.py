@@ -152,6 +152,102 @@ async def assistant_voice(req: TTSRequest):
 
 # ---------- Background payment processor ----------
 
+async def auto_reverse(txn_id: str, payer_bank_url: str, store: dict, reason: str) -> bool:
+    """Return a stranded debit to the payer.
+
+    When the credit leg fails, the money is sitting in the remitter bank's
+    pool account. Leaving it there is the bug that used to destroy value.
+    This is the trigger that was missing: the reversal endpoint existed but
+    nothing ever called it.
+    """
+    store["hop_log"].append({
+        "hop": "payer_bank",
+        "event": f"Auto-reversal initiated — {reason}",
+        "ts": datetime.utcnow().isoformat(),
+    })
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{payer_bank_url}/reverse",
+                                     json={"txn_id": txn_id, "reason": reason})
+        if resp.status_code == 200:
+            data = resp.json()
+            store["new_balance"] = data.get("new_balance", store.get("new_balance"))
+            store["reversal_entry_id"] = data.get("reversal_entry_id")
+            store["hop_log"].append({
+                "hop": "payer_bank",
+                "event": f"Reversed ✓ — {data.get('message', 'funds returned to payer')}",
+                "ts": datetime.utcnow().isoformat(),
+            })
+            return True
+        store["hop_log"].append({
+            "hop": "payer_bank",
+            "event": f"REVERSAL FAILED: {resp.text[:160]} — funds held in pool, needs manual recon",
+            "ts": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        store["hop_log"].append({
+            "hop": "payer_bank",
+            "event": f"REVERSAL ERROR: {e} — funds held in pool, needs manual recon",
+            "ts": datetime.utcnow().isoformat(),
+        })
+    return False
+
+
+async def resolve_stranded(txn_id: str, store: dict, cause: str):
+    """Decide what to do when a payment broke after the debit went through.
+
+    Any failure between the debit and the credit leaves value stranded in the
+    remitter's pool. We must not guess: ask the beneficiary bank whether the
+    credit actually landed (the ReqChkTxn pattern), and only reverse if it did
+    not. A timeout or a dropped connection is not the same as a failure.
+    """
+    credited = None
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            chk = await client.get(f"{PAYEE_BANK_URL}/txn/{txn_id}")
+        if chk.status_code == 200:
+            credited = chk.json().get("status") == "credited"
+        elif chk.status_code == 404:
+            credited = False
+    except Exception as chk_err:
+        store["hop_log"].append({
+            "hop": "payee_bank",
+            "event": f"Status check unavailable ({chk_err}) — cannot confirm the credit leg",
+            "ts": datetime.utcnow().isoformat(),
+        })
+
+    debited = store["hops"].get("payer_bank") == "completed"
+
+    if credited:
+        store["hops"]["payee_bank"] = "completed"
+        store["status"] = "success"
+        store["hop_log"].append({"hop": "payee_bank",
+            "event": "Status check: the credit did land ✓ — transaction is good",
+            "ts": datetime.utcnow().isoformat()})
+    elif credited is False and debited:
+        store["hop_log"].append({"hop": "payee_bank",
+            "event": "Status check: no credit found — the debit is stranded",
+            "ts": datetime.utcnow().isoformat()})
+        if await auto_reverse(txn_id, PAYER_BANK_URL, store, cause):
+            store["status"] = "reversed"
+            store["error"] = f"Payment failed and was refunded automatically. ({cause})"
+        else:
+            store["status"] = "partial_failure"
+            store["error"] = f"Payment failed and the refund did not go through. ({cause})"
+    elif debited:
+        # Could not reach the beneficiary bank to ask. Do NOT reverse blindly —
+        # the credit may have landed. Flag for reconciliation instead.
+        store["status"] = "partial_failure"
+        store["error"] = (f"Debited but the credit leg is unconfirmed — awaiting "
+                          f"status check. ({cause})")
+    else:
+        store["status"] = "failed"
+        store["error"] = cause
+
+    store["completed_at"] = datetime.utcnow().isoformat()
+    supabase_db.sync_transaction(store)
+
+
 async def process_payment(txn_id: str, req: InitiateRequest):
     """
     Async task: orchestrates the full UPI hop sequence and updates txn_store
@@ -231,13 +327,22 @@ async def process_payment(txn_id: str, req: InitiateRequest):
             })
 
         if credit_resp.status_code != 200:
-            # ⚠️  Partial success: debited but not credited → reversal needed
+            # Debited but not credited. The funds are in the remitter's pool —
+            # recoverable, not lost — so return them to the payer immediately.
             err = credit_resp.json().get("detail", "Credit failed")
             store["hops"]["payee_bank"] = "failed"
-            store["hop_log"].append({"hop": "payee_bank", "event": f"FAILED (reversal needed): {err}", "ts": datetime.utcnow().isoformat()})
-            store["status"] = "partial_failure"
-            store["error"] = f"Credit leg failed after debit — reversal initiated. ({err})"
+            store["hop_log"].append({"hop": "payee_bank", "event": f"FAILED: {err}", "ts": datetime.utcnow().isoformat()})
             store["error_stage"] = "payee_bank"
+
+            reversed_ok = await auto_reverse(txn_id, payer_bank_url, store,
+                                             f"Credit leg failed: {err}")
+            if reversed_ok:
+                store["status"] = "reversed"
+                store["error"] = f"Payment failed and was refunded automatically. ({err})"
+            else:
+                store["status"] = "partial_failure"
+                store["error"] = f"Credit failed and the reversal did not go through. ({err})"
+            store["completed_at"] = datetime.utcnow().isoformat()
             supabase_db.sync_transaction(store)
             return
 
@@ -253,16 +358,48 @@ async def process_payment(txn_id: str, req: InitiateRequest):
         update_velocity(req.payer_vpa, req.amount)
 
     except httpx.TimeoutException as e:
-        store["status"] = "timeout"
-        store["error"] = "A service did not respond in time. Timeout ≠ failed — status check required."
-        store["hop_log"].append({"hop": "unknown", "event": f"TIMEOUT: {str(e)}", "ts": datetime.utcnow().isoformat()})
-        supabase_db.sync_transaction(store)
+        store["hop_log"].append({"hop": "unknown",
+            "event": f"TIMEOUT: {e} — running status check",
+            "ts": datetime.utcnow().isoformat()})
+        await resolve_stranded(txn_id, store, f"Timed out: {e}")
 
     except Exception as e:
-        store["status"] = "failed"
-        store["error"] = str(e)
-        store["hop_log"].append({"hop": "unknown", "event": f"ERROR: {str(e)}", "ts": datetime.utcnow().isoformat()})
-        supabase_db.sync_transaction(store)
+        # Includes ConnectError when a downstream bank is simply down. If the
+        # debit already went through, this is a stranded payment, not a plain
+        # failure — it must be resolved, not just logged.
+        store["hop_log"].append({"hop": "unknown",
+            "event": f"ERROR: {e}",
+            "ts": datetime.utcnow().isoformat()})
+        await resolve_stranded(txn_id, store, str(e))
+
+
+# ---------- Reconciliation sweep ----------
+
+RECON_INTERVAL_SECS = 20
+
+
+async def recon_sweep():
+    """Retry payments that were left unconfirmed because a bank was unreachable.
+
+    `partial_failure` means we debited but could not find out whether the credit
+    landed, so we deliberately did not reverse. Once the beneficiary bank is
+    back, ask again and finish the job — either confirm the credit or refund.
+    This is the ReqChkTxn sweep: no payment is allowed to stay stranded.
+    """
+    while True:
+        await asyncio.sleep(RECON_INTERVAL_SECS)
+        stuck = [t for t, s in txn_store.items() if s.get("status") == "partial_failure"]
+        for txn_id in stuck:
+            store = txn_store[txn_id]
+            store["hop_log"].append({
+                "hop": "psp",
+                "event": "Reconciliation sweep: re-checking the credit leg",
+                "ts": datetime.utcnow().isoformat(),
+            })
+            try:
+                await resolve_stranded(txn_id, store, store.get("error", "unconfirmed"))
+            except Exception as e:
+                print(f"[recon] sweep failed for {txn_id}: {e}", flush=True)
 
 
 # ---------- Settlement batch loop ----------
@@ -313,16 +450,31 @@ async def run_settlement_cycle():
         settlement_history.append(cycle)
         supabase_db.insert_settlement_batch(cycle)
 
-        # Mark all settled transactions
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            for t in unsettled_debits:
-                await client.post(f"{PAYER_BANK_URL}/update-status", json={
-                    "txn_id": t["txn_id"], "status": "success", "settlement_batch_id": cycle_id
-                })
-            for t in unsettled_credits:
-                await client.post(f"{PAYEE_BANK_URL}/update-status", json={
-                    "txn_id": t["txn_id"], "status": "success", "settlement_batch_id": cycle_id
-                })
+        # Tell each bank to settle its own position. The bank posts the
+        # POOL -> NOSTRO journal entry AND stamps the batch id on the
+        # transactions it covered, in one transaction. Without this the pool
+        # accounts only ever grow: the money never actually leaves them.
+        # Only payments whose BOTH legs completed may be settled. A debit with
+        # no matching credit is still recoverable from the pool and must stay
+        # there until it is credited or reversed.
+        matched = sorted({t["txn_id"] for t in unsettled_debits}
+                         & {t["txn_id"] for t in unsettled_credits})
+        cycle["matched_count"] = len(matched)
+        cycle["unmatched_debits"] = sorted(
+            {t["txn_id"] for t in unsettled_debits} - set(matched))
+
+        settlement_posts = {}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for name, url in (("payer", PAYER_BANK_URL), ("payee", PAYEE_BANK_URL)):
+                try:
+                    resp = await client.post(f"{url}/settlement/post",
+                                             json={"cycle_id": cycle_id, "txn_ids": matched})
+                    settlement_posts[name] = resp.json() if resp.status_code == 200 else {
+                        "error": resp.text[:200]}
+                except Exception as post_err:
+                    settlement_posts[name] = {"error": str(post_err)}
+
+        cycle["ledger_postings"] = settlement_posts
 
         # Also update PSP's in-memory store
         for txn_id, s in txn_store.items():
@@ -348,6 +500,7 @@ async def startup():
     global next_settlement_at
     next_settlement_at = time.time() + SETTLEMENT_INTERVAL_SECS
     asyncio.create_task(settlement_loop())
+    asyncio.create_task(recon_sweep())
 
 
 # ---------- Endpoints ----------

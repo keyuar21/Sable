@@ -1,0 +1,5 @@
+# Beneficiary bank: FastAPI + the stdlib sqlite3 ledger. httpx syncs the
+# Supabase reporting mirror.
+uvicorn[standard]==0.30.1
+pydantic==2.7.1
+httpx==0.27.0

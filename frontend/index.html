@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>UPI Sim — Voice Payments</title>
   <meta name="description" content="A polished voice-first UPI payment simulator.">
-  <link rel="stylesheet" href="styles.css?v=cred-dark-1">
+  <link rel="stylesheet" href="styles.css?v=voice-3">
 </head>
 <body>
 
@@ -54,41 +54,78 @@
 
       <!-- ══════════════════════════════ LOGIN SCREEN ════════════════════ -->
       <div class="screen" id="screen-login">
-        <div class="login-card">
-          <div class="back-header">
-            <span class="back-title">Sign in</span>
+        <div class="login-screen">
+
+          <div class="login-head">
+            <div class="login-mark"><span></span><span></span><span></span></div>
+            <h2 class="login-title">Welcome back</h2>
+            <p class="login-sub">Sign in to authorise payments with your voice.</p>
           </div>
-          <div style="padding:20px;">
-            <label for="login-select">Choose Demo User</label>
-            <select id="login-select" style="width:100%;padding:8px;margin:8px 0;">
-              <option value="you@mockbank">you@mockbank — Keyur Arbhelonde</option>
-              <option value="priya@mockbank">priya@mockbank — Priya Sharma</option>
-              <option value="rahul@mockbank">rahul@mockbank — Rahul Mehta</option>
-            </select>
 
-            <div style="display:flex;gap:8px;margin-bottom:8px;">
-              <input id="login-pin" type="password" placeholder="Enter 4-digit PIN" maxlength="6" style="flex:1;padding:8px;" />
-              <button id="login-pin-btn" class="pay-now-btn">PIN</button>
+          <div class="login-field" id="login-account-field">
+            <div class="login-label-row">
+              <span class="login-label">Linked to this device</span>
+              <button class="login-refresh" id="btn-use-other-vpa" type="button">Use another UPI ID</button>
             </div>
-
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button id="login-biometric-btn" class="pay-now-btn">Use Biometric</button>
-              <button id="login-enroll-btn" class="pay-now-btn enroll">Enroll Biometric</button>
-            </div>
-
-            <div style="margin-top:12px;color:var(--text-3);font-size:13px;">Tip: enroll biometric first, then use "Use Biometric" to sign in. Demo PIN is 1234.</div>
-
-            <div class="login-divider"><span>OR</span></div>
-
-            <button id="btn-start-onboarding" class="onboard-action-btn" type="button">
-              <span class="onboard-icon">🏦</span>
-              <div class="onboard-text">
-                <div class="onboard-title">New User? Link Bank Account</div>
-                <div class="onboard-sub">Device Binding • NPCI Discovery • Biometric MPIN</div>
-              </div>
-              <span class="onboard-arrow">›</span>
-            </button>
+            <div class="account-list" id="login-accounts"></div>
           </div>
+
+          <div class="login-field hidden" id="login-vpa-field">
+            <div class="login-label-row">
+              <label class="login-label" for="login-vpa">Your UPI ID</label>
+              <button class="login-refresh hidden" id="btn-cancel-other-vpa" type="button">Cancel</button>
+            </div>
+            <input id="login-vpa" class="login-input vpa" type="text" inputmode="email"
+                   autocapitalize="off" autocorrect="off" spellcheck="false"
+                   autocomplete="username" placeholder="yourname@bank" />
+            <p class="login-hint">
+              Enter the UPI ID you already hold. It is only linked to this device
+              once your PIN or biometric check passes.
+            </p>
+          </div>
+
+          <div class="login-field">
+            <label class="login-label" for="login-pin">UPI PIN</label>
+            <div class="pin-row">
+              <input id="login-pin" class="login-input" type="password" inputmode="numeric"
+                     autocomplete="current-password" maxlength="6" placeholder="Enter 4-digit PIN" />
+              <button id="login-biometric-btn" class="bio-icon-btn" type="button" title="Sign in with Face ID / Touch ID">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.7" stroke-linecap="round">
+                  <path d="M12 10v4a9 9 0 0 1-.6 3.2"/>
+                  <path d="M8.5 8.8A4 4 0 0 1 16 10.8v2.4a13 13 0 0 1-.5 3.6"/>
+                  <path d="M8 12.5V11a4 4 0 0 1 .3-1.5"/>
+                  <path d="M8.2 16.4A8 8 0 0 0 9 13"/>
+                  <path d="M5 11a7 7 0 0 1 11.2-5.6"/>
+                  <path d="M19 10.5v3a17 17 0 0 1-.6 4.4"/>
+                  <path d="M5.2 15.5A9 9 0 0 1 5 14"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <button id="login-pin-btn" class="primary-btn" type="button">
+            <span>Sign in</span>
+            <span class="btn-arrow">→</span>
+          </button>
+
+          <div class="login-status" id="login-status" role="status"></div>
+
+          <button id="login-enroll-btn" class="login-text-btn" type="button">
+            Set up Face ID / Touch ID on this device
+          </button>
+
+          <div class="login-divider"><span>OR</span></div>
+
+          <button id="btn-start-onboarding" class="onboard-action-btn" type="button">
+            <span class="onboard-icon">🏦</span>
+            <div class="onboard-text">
+              <div class="onboard-title">New User? Link Bank Account</div>
+              <div class="onboard-sub">Device Binding • NPCI Discovery • Biometric MPIN</div>
+            </div>
+            <span class="onboard-arrow">›</span>
+          </button>
+
         </div>
       </div><!-- /screen-login -->
 
@@ -99,18 +136,26 @@
           <div class="voice-enroll-icon">🎙️</div>
           <div class="voice-enroll-title">Set up Voice ID</div>
           <div class="voice-enroll-sub" id="voice-enroll-sub">
-            Voice ID uses <strong>Resemblyzer</strong> (who) + <strong>AASIST</strong> anti-spoof (live vs recording).
-            Speak the phrase and the random code — phone playbacks cannot pass.
+            Voice ID uses <strong>ECAPA-TDNN</strong> to recognise your voice and
+            <strong>AASIST</strong> to tell a live person from a recording.
+            Say the phrase and the code shown — a playback cannot pass.
           </div>
 
           <div class="voice-enroll-steps" id="voice-enroll-steps">
             <div class="voice-enroll-step" data-step="0">1</div>
             <div class="voice-enroll-step" data-step="1">2</div>
             <div class="voice-enroll-step" data-step="2">3</div>
+            <div class="voice-enroll-step" data-step="3">4</div>
+            <div class="voice-enroll-step" data-step="4">5</div>
           </div>
 
           <div class="voice-enroll-phrase" id="voice-enroll-phrase">
-            “My voice is my payment PIN for UPI Sim”
+            “My voice is my key. Code · · · ·”
+          </div>
+
+          <div class="voice-safety-note">
+            <span class="lock">🔒</span>The code is a one-time number, not your UPI PIN.
+            <strong>Never say your PIN out loud.</strong>
           </div>
 
           <div class="waveform idle" id="enroll-waveform">
@@ -256,6 +301,8 @@
           <div class="home-security"><span></span> SECURED</div>
         </div>
 
+        <div class="home-col home-col-a">
+
         <!-- Balance Card -->
         <div class="balance-card">
           <div class="balance-label">Available Balance</div>
@@ -323,6 +370,10 @@
           </div>
         </div>
 
+        </div><!-- /home-col-a -->
+
+        <div class="home-col home-col-b">
+
         <!-- Recent Transactions -->
         <div class="section-header">
           <span class="section-title">Recent Transactions</span>
@@ -344,6 +395,8 @@
           </div>
           <div class="settlement-countdown" id="settlement-countdown">30s</div>
         </div>
+
+        </div><!-- /home-col-b -->
 
       </div><!-- /screen-home -->
 
@@ -440,6 +493,9 @@
             <div class="wave-bar"></div>
           </div>
           <div class="voice-confirm-transcript" id="voice-confirm-transcript"></div>
+          <div class="voice-safety-note">
+            <span class="lock">🔒</span>One-time code, not your UPI PIN. Never say your PIN out loud.
+          </div>
           <div class="voice-confirm-hint" id="voice-confirm-hint">
             Say <em>“Yes, make payment”</em> — only your enrolled voice will work
           </div>
@@ -641,6 +697,10 @@
 
     <!-- Bottom Navigation -->
     <div class="bottom-nav">
+      <div class="nav-brand">
+        <div class="logo-icon"><span></span><span></span><span></span></div>
+        <span>upi</span><span class="logo-dot">.</span>
+      </div>
       <div class="nav-item active" id="nav-home" onclick="showScreen('home')">
         <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path d="M3 12L12 3l9 9M5 10v9a1 1 0 0 0 1 1h4v-5h4v5h4a1 1 0 0 0 1-1v-9" stroke-linecap="round" stroke-linejoin="round"/>
@@ -675,8 +735,9 @@
 
 </div><!-- /desktop-bg -->
 
+<script src="config.js"></script>
 <script src="webauthn.js?v=1"></script>
-<script src="voicebio.js?v=cute-voice-2"></script>
-<script src="app.js?v=cred-dark-1"></script>
+<script src="voicebio.js?v=voice-2"></script>
+<script src="app.js?v=voice-3"></script>
 </body>
 </html>

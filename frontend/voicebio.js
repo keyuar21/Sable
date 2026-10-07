@@ -7,7 +7,7 @@
 
 const VOICE_AUTH_API = 'http://localhost:5005';
 
-const ENROLL_BASE_PHRASE = 'My voice is my payment PIN';
+const ENROLL_BASE_PHRASE = 'My voice is my key';
 // Kept for backward-compat with app.js updateEnrollUI until challenge phrase is set
 const ENROLL_PHRASES = [
   ENROLL_BASE_PHRASE,

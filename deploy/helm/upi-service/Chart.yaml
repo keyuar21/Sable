@@ -1,0 +1,15 @@
+apiVersion: v2
+name: upi-service
+description: >-
+  One chart for every microservice in the UPI payment simulator. Each service is
+  installed as a separate release of this chart with its own values file; the
+  only thing that differs between them is values.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - upi
+  - payments
+  - simulator
+maintainers:
+  - name: keyuar

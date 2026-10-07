@@ -1,0 +1,27 @@
+{{ .Release.Name }} — {{ .Values.service.name | default "service" }}
+
+  image     {{ include "upi-service.image" . }}
+  in-cluster  http://{{ include "upi-service.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+Runtime config
+  ConfigMap  {{ include "upi-service.configMapName" . }}
+  key        {{ include "upi-service.configName" . }}
+  mounted    {{ .Values.app.configMountPath }}/{{ include "upi-service.configName" . }}
+  env        {{ .Values.app.configPathEnv }}
+
+  Read it back:
+    kubectl -n {{ .Release.Namespace }} get configmap {{ include "upi-service.configMapName" . }} \
+      -o jsonpath='{.data.{{ include "upi-service.configName" . }}}'
+
+  Change it by editing the values file and running `helm upgrade`. The pods roll
+  automatically — the Deployment carries a checksum of the rendered ConfigMap.
+
+{{- if .Values.persistence.enabled }}
+
+Storage
+  PVC {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "upi-service.fullname" .)) }} at {{ .Values.persistence.mountPath }} ({{ .Values.persistence.size }})
+  This holds the SQLite ledger. Keep replicaCount at 1 — ReadWriteOnce admits one writer.
+{{- end }}
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "upi-service.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "upi-service.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}

@@ -217,12 +217,24 @@ def _normalize_spoken_digits(text: str) -> str:
 
 
 def _issue_voice_challenge(vpa: str, purpose: str) -> dict:
+    """Issue a one-time spoken challenge.
+
+    The digits are a random nonce from `secrets`, generated per attempt and
+    valid for two minutes. They are NOT the customer's UPI PIN, and the PIN
+    never enters the voice path at any point.
+
+    The wording matters as much as the mechanism. The old phrase was
+    "My voice is my payment PIN. Code 8 5 5 7", which reads as though the
+    speaker is announcing a PIN out loud. Someone who believes that will either
+    refuse to pay in public — or worse, start saying their real PIN. Neither
+    word appears now.
+    """
     digits = f"{secrets.randbelow(10000):04d}"
     spoken = " ".join(digits)
     if purpose == "enroll":
-        phrase = f"My voice is my payment PIN. Code {spoken}"
+        phrase = f"My voice is my key. Code {spoken}"
     else:
-        phrase = f"Yes, make payment. Code {spoken}"
+        phrase = f"Confirm this payment. Code {spoken}"
     cid = secrets.token_urlsafe(16)
     _voice_challenges[cid] = {
         "vpa": vpa,
@@ -238,6 +250,8 @@ def _issue_voice_challenge(vpa: str, purpose: str) -> dict:
         "phrase": phrase,
         "expires_in_secs": 120,
         "hint": f"Say the phrase and clearly speak the code {spoken}",
+        "safety_note": "This code is a one-time number, not your UPI PIN. "
+                       "Never say your PIN out loud.",
     }
 
 

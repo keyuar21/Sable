@@ -1,0 +1,35 @@
+# NPCI switch — resolves a VPA handle to a bank, logs the hop, and owns the
+# settlement cycle's transaction set. The only component that talks to both
+# banks; they never talk to each other.
+image:
+  repository: upi-switch
+  tag: ""        # defaults to Chart.appVersion
+
+service:
+  name: switch
+  module: mock_switch.switch_service:app
+  port: 5002
+
+replicaCount: 2
+
+app:
+  config:
+    service: switch
+    # Handle suffix -> bank service. This is the central mapper.
+    routing_table:
+      "@mockbank":  http://upi-payer-bank:5003
+      "@hdfcbank":  http://upi-payer-bank:5003
+      "@mockbank2": http://upi-payee-bank:5004
+    discovery:
+      # Accounts returned by the NPCI central mapper lookup during onboarding.
+      default_bank: HDFC Bank
+
+existingSecret: upi-supabase
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

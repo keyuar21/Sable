@@ -2,12 +2,27 @@
 Voice biometrics — speaker ID + anti-spoof (replay / deepfake) for Voice UPI.
 
 Stack (all free / open-source):
-  1. Resemblyzer GE2E  — neural speaker embeddings (who is speaking)
+  1. ECAPA-TDNN        — speaker embeddings (who is speaking). VoxCeleb EER
+                         around 1%, against roughly 5% for the GE2E model this
+                         replaced, so about a five-fold drop in error rate.
   2. AASIST ONNX       — ASVspoof anti-spoofing (live vs synthetic/spoof)
   3. Spectral PAD      — phone-speaker replay heuristics (sub-bass + flatness)
   4. Dynamic challenge — randomized digits (app layer; blocks static recordings)
 
-Fallback: classic MFCC/LPC if Resemblyzer is unavailable.
+Backends are tried in order: ECAPA-TDNN, then Resemblyzer GE2E, then an MFCC
+baseline. An enrollment records which backend produced it and verification
+refuses to compare across backends, because the embedding spaces are unrelated.
+
+Accuracy work beyond the model itself:
+
+  * Adaptive threshold. A single global cut-off ignores that some people's
+    voices cluster tightly and others' do not. The threshold is derived per
+    speaker from how consistent their own enrollment samples were.
+  * AS-norm. Raw cosine scores drift with microphone and room. Each score is
+    normalised against a cohort of other speakers, which is what makes one
+    threshold meaningful across different devices.
+  * Quality gating. A decision is only as good as the audio. Clipped, too
+    quiet, too short or too noisy input is rejected rather than scored.
 """
 
 from __future__ import annotations
@@ -22,11 +37,32 @@ from typing import Optional
 
 import numpy as np
 
-VERIFY_THRESHOLD = 0.72          # Resemblyzer cosine (same speaker typically >0.75)
-MFCC_VERIFY_THRESHOLD = 0.72
+# Base operating points per backend, before per-speaker adaptation. ECAPA
+# separates far better than GE2E, so it can sit at a higher, safer cut-off.
+BASE_THRESHOLD = {
+    "ecapa": 0.55,
+    "resemblyzer": 0.72,
+    "mfcc": 0.80,          # weakest backend, so demand the most
+}
+VERIFY_THRESHOLD = BASE_THRESHOLD["resemblyzer"]   # kept for older callers
+MFCC_VERIFY_THRESHOLD = BASE_THRESHOLD["mfcc"]
+
+# How far the per-speaker threshold may move from the base in either direction.
+THRESHOLD_ADAPT_RANGE = 0.08
+
 MIN_ENROLL_SAMPLES = 3
+# Five samples give a materially better centroid than three and let us discard
+# an outlier without dropping below the minimum.
+TARGET_ENROLL_SAMPLES = 5
+
 MIN_AUDIO_SECONDS = 0.5
+# Speech actually present after silence removal, which is what the model sees.
+MIN_SPEECH_SECONDS = 1.2
+MIN_SNR_DB = 8.0
+MAX_CLIPPED_FRACTION = 0.02
+
 ENROLL_PAIR_MIN_SIM = 0.35       # Resemblyzer pairs are more stable
+ENROLL_OUTLIER_MARGIN = 0.12     # drop a sample this far below the median
 TARGET_SR = 16000
 AASIST_LEN = 64600               # ~4.0375 s @ 16 kHz
 # Softmax P(bona fide); AASIST is strict on non-ASVspoof audio — combine with PAD
@@ -42,6 +78,13 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "voice_biometrics.db")
 _encoder = None
 _ort_session = None
 _use_resemblyzer = None
+_ecapa = None
+_ecapa_failed = False
+
+# SpeechBrain writes its model cache here. Kept beside the other models so a
+# container can bake it in and never reach for the network at runtime.
+ECAPA_SOURCE = os.environ.get("ECAPA_MODEL", "speechbrain/spkrec-ecapa-voxceleb")
+ECAPA_CACHE = os.environ.get("ECAPA_CACHE", os.path.join(MODELS_DIR, "ecapa"))
 
 
 def _db() -> sqlite3.Connection:
@@ -343,6 +386,85 @@ def _mfcc_embedding(samples: np.ndarray) -> np.ndarray:
     return vec / (np.linalg.norm(vec) + 1e-9)
 
 
+def _get_ecapa():
+    """Load ECAPA-TDNN once. Returns None if unavailable, so the older
+    backends still work on a machine without SpeechBrain."""
+    global _ecapa, _ecapa_failed
+    if _ecapa is not None or _ecapa_failed:
+        return _ecapa
+    try:
+        import warnings
+        warnings.filterwarnings("ignore", module="speechbrain")
+        # SpeechBrain and huggingface_hub both want a writable cache; point
+        # them somewhere we control rather than at the user's home directory.
+        os.environ.setdefault("HF_HOME", ECAPA_CACHE)
+        os.environ.setdefault("HUGGINGFACE_HUB_CACHE", ECAPA_CACHE)
+        os.makedirs(ECAPA_CACHE, exist_ok=True)
+        from speechbrain.inference.speaker import EncoderClassifier
+        _ecapa = EncoderClassifier.from_hparams(
+            source=ECAPA_SOURCE,
+            savedir=os.path.join(ECAPA_CACHE, "spkrec-ecapa"),
+            run_opts={"device": "cpu"},
+        )
+        print("[voice] ECAPA-TDNN speaker encoder ready", flush=True)
+    except Exception as e:
+        _ecapa_failed = True
+        print(f"[voice] ECAPA-TDNN unavailable ({e}); falling back", flush=True)
+    return _ecapa
+
+
+def assess_quality(samples: np.ndarray) -> dict:
+    """Reject audio that cannot support a reliable decision.
+
+    Scoring bad audio is worse than refusing it: a clipped or near-silent clip
+    produces an embedding that is essentially noise, and noise sometimes clears
+    the threshold. Better to ask the person to speak again.
+    """
+    n = samples.size
+    duration = n / float(TARGET_SR)
+    peak = float(np.max(np.abs(samples))) if n else 0.0
+    clipped = float(np.mean(np.abs(samples) > 0.98)) if n else 1.0
+
+    # Frame energies split into speech and silence by an energy percentile —
+    # cheap, and good enough to measure how much speech is actually present.
+    frame, hop = 400, 160
+    if n >= frame:
+        idx = range(0, n - frame, hop)
+        energies = np.array([float(np.mean(samples[i:i + frame] ** 2)) for i in idx])
+    else:
+        energies = np.array([float(np.mean(samples ** 2))]) if n else np.array([0.0])
+
+    noise_floor = float(np.percentile(energies, 20)) + 1e-12
+    speech_gate = max(noise_floor * 4.0, float(np.percentile(energies, 60)) * 0.35)
+    speech_frames = int(np.sum(energies > speech_gate))
+    speech_secs = speech_frames * hop / float(TARGET_SR)
+    speech_energy = float(np.mean(energies[energies > speech_gate])) if speech_frames else 0.0
+    snr_db = 10.0 * math.log10((speech_energy + 1e-12) / noise_floor) if speech_energy else 0.0
+
+    problems = []
+    if duration < MIN_AUDIO_SECONDS:
+        problems.append(f"recording too short ({duration:.1f}s)")
+    if speech_secs < MIN_SPEECH_SECONDS:
+        problems.append(f"only {speech_secs:.1f}s of speech — say the whole phrase")
+    if peak < 0.03:
+        problems.append("too quiet — move closer to the microphone")
+    if clipped > MAX_CLIPPED_FRACTION:
+        problems.append("audio is clipping — move back or lower the input gain")
+    if snr_db < MIN_SNR_DB:
+        problems.append(f"too much background noise (SNR {snr_db:.0f} dB)")
+
+    return {
+        "ok": not problems,
+        "duration": round(duration, 2),
+        "speech_secs": round(speech_secs, 2),
+        "snr_db": round(snr_db, 1),
+        "peak": round(peak, 3),
+        "clipped_fraction": round(clipped, 4),
+        "problems": problems,
+        "message": "; ".join(problems) if problems else "audio quality ok",
+    }
+
+
 def extract_embedding(audio_bytes: bytes) -> tuple[np.ndarray, dict]:
     samples = load_mono_16k(audio_bytes)
     meta = {"duration": samples.size / float(TARGET_SR), "backend": "mfcc"}
@@ -359,6 +481,22 @@ def extract_embedding(audio_bytes: bytes) -> tuple[np.ndarray, dict]:
             pitches.append(TARGET_SR / (int(np.argmax(seg)) + lo))
     meta["pitch_mean"] = float(np.mean(pitches)) if pitches else 0.0
 
+    meta["quality"] = assess_quality(samples)
+
+    # 1. ECAPA-TDNN — the accurate one.
+    ecapa = _get_ecapa()
+    if ecapa is not None:
+        try:
+            import torch
+            with torch.no_grad():
+                e = ecapa.encode_batch(torch.from_numpy(samples).float().unsqueeze(0))
+            emb = e.squeeze().cpu().numpy().astype(np.float32)
+            meta["backend"] = "ecapa"
+            return emb / (np.linalg.norm(emb) + 1e-9), meta
+        except Exception as e:
+            meta["ecapa_error"] = str(e)
+
+    # 2. Resemblyzer GE2E.
     enc = _get_encoder()
     if enc is not None:
         try:
@@ -372,7 +510,95 @@ def extract_embedding(audio_bytes: bytes) -> tuple[np.ndarray, dict]:
         except Exception as e:
             meta["resemblyzer_error"] = str(e)
 
+    # 3. MFCC baseline.
     return _mfcc_embedding(samples), meta
+
+
+def _cohort_vectors(exclude_vpa: str, backend: str, limit: int = 40) -> list[np.ndarray]:
+    """Other enrolled speakers, used as impostors for score normalisation."""
+    out = []
+    try:
+        with _db() as conn:
+            rows = conn.execute(
+                "SELECT vpa, embedding_json FROM voice_embeddings WHERE vpa != ? LIMIT ?",
+                (exclude_vpa, limit),
+            ).fetchall()
+        for r in rows:
+            try:
+                stored = json.loads(r["embedding_json"])
+                if isinstance(stored, list):
+                    continue                      # legacy row, backend unknown
+                if stored.get("backend") != backend:
+                    continue                      # never mix embedding spaces
+                v = np.asarray(stored["vec"], dtype=np.float32)
+                out.append(v / (np.linalg.norm(v) + 1e-9))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
+
+
+def as_norm(raw_score: float, probe: np.ndarray, enrolled: np.ndarray,
+            cohort: list[np.ndarray]) -> tuple[Optional[float], dict]:
+    """Adaptive symmetric score normalisation.
+
+    A raw cosine score is not comparable across microphones, rooms or recording
+    levels — the same speaker on a laptop and on a phone can differ by more than
+    the gap between two different people. AS-norm measures where this score sits
+    relative to impostor scores for the same probe and the same enrolment, which
+    cancels most of that shift.
+
+    Returns a z-score, NOT a cosine. The two live on different scales and must
+    never be compared against the same threshold; the caller picks the right
+    one. Returns None when the cohort is too small to normalise against.
+    """
+    if len(cohort) < 3:
+        return None, {"applied": False, "cohort": len(cohort)}
+
+    probe_scores = np.array([float(probe @ c) for c in cohort], dtype=np.float32)
+    enroll_scores = np.array([float(enrolled @ c) for c in cohort], dtype=np.float32)
+
+    mu_p, sd_p = float(probe_scores.mean()), float(probe_scores.std() + 1e-6)
+    mu_e, sd_e = float(enroll_scores.mean()), float(enroll_scores.std() + 1e-6)
+
+    z = 0.5 * ((raw_score - mu_p) / sd_p + (raw_score - mu_e) / sd_e)
+    return float(z), {
+        "applied": True,
+        "cohort": len(cohort),
+        "impostor_mean": round(float(probe_scores.mean()), 4),
+        "raw": round(raw_score, 4),
+    }
+
+
+# How many standard deviations above the impostor distribution a genuine
+# attempt must sit when AS-norm is in play. Independent of the cosine scale.
+BASE_Z_THRESHOLD = 1.8
+
+
+def adaptive_z_threshold(enroll_consistency: float) -> float:
+    """The AS-norm operating point, nudged by enrolment consistency."""
+    if enroll_consistency <= 0:
+        return BASE_Z_THRESHOLD
+    offset = (enroll_consistency - 0.85) * 2.0
+    return round(BASE_Z_THRESHOLD + max(-0.5, min(0.5, offset)), 3)
+
+
+def adaptive_threshold(backend: str, enroll_consistency: float) -> float:
+    """Shift the operating point by how tightly this speaker's own samples sat.
+
+    Someone whose enrolment samples were nearly identical gets a slightly
+    stricter cut-off, because a genuine attempt from them should score high.
+    Someone whose samples varied (a cold, a noisier room) gets a slightly more
+    forgiving one, so they are not locked out of their own account.
+    """
+    base = BASE_THRESHOLD.get(backend, BASE_THRESHOLD["mfcc"])
+    if enroll_consistency <= 0:
+        return base
+    # consistency ~0.95 is very tight, ~0.70 is loose.
+    offset = (enroll_consistency - 0.85) * 0.5
+    offset = max(-THRESHOLD_ADAPT_RANGE, min(THRESHOLD_ADAPT_RANGE, offset))
+    return round(base + offset, 4)
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -381,34 +607,72 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 # ── Persistence / enroll / verify ─────────────────────────────────────────────
 
+def active_backend() -> str:
+    """Which encoder this process would use for a new recording."""
+    if _get_ecapa() is not None:
+        return "ecapa"
+    if _get_encoder() is not None:
+        return "resemblyzer"
+    return "mfcc"
+
+
+def _stored_backend(embedding_json: str) -> str:
+    try:
+        stored = json.loads(embedding_json)
+        return "legacy" if isinstance(stored, list) else stored.get("backend", "unknown")
+    except Exception:
+        return "unknown"
+
+
 def is_enrolled(vpa: str) -> bool:
+    """Enrolled means usable, not merely present.
+
+    A voiceprint recorded with a different encoder cannot be compared against
+    the current one at all, so it does not count as enrolled. Reporting it as
+    enrolled would let someone reach the payment screen and fail there, instead
+    of being sent to re-enrol where the problem is actually fixable.
+    """
     with _db() as conn:
         row = conn.execute(
-            "SELECT sample_count FROM voice_embeddings WHERE vpa = ?", (vpa,)
+            "SELECT sample_count, embedding_json FROM voice_embeddings WHERE vpa = ?", (vpa,)
         ).fetchone()
-    return bool(row and row["sample_count"] >= MIN_ENROLL_SAMPLES)
+    if not row or row["sample_count"] < MIN_ENROLL_SAMPLES:
+        return False
+    return _stored_backend(row["embedding_json"]) == active_backend()
 
 
 def get_status(vpa: str) -> dict:
     with _db() as conn:
         row = conn.execute(
-            "SELECT sample_count, updated_at, created_at FROM voice_embeddings WHERE vpa = ?",
+            "SELECT sample_count, updated_at, created_at, embedding_json "
+            "FROM voice_embeddings WHERE vpa = ?",
             (vpa,),
         ).fetchone()
-    backend = "resemblyzer" if _get_encoder() else "mfcc"
+    backend = active_backend()
     aasist_ok = _get_ort() is not None
     base = {
         "required_samples": MIN_ENROLL_SAMPLES,
-        "threshold": VERIFY_THRESHOLD if backend == "resemblyzer" else MFCC_VERIFY_THRESHOLD,
+        "target_samples": TARGET_ENROLL_SAMPLES,
+        "threshold": BASE_THRESHOLD.get(backend, MFCC_VERIFY_THRESHOLD),
         "speaker_backend": backend,
         "anti_spoof": {"aasist_onnx": aasist_ok, "spectral_pad": True},
     }
     if not row:
         return {**base, "enrolled": False, "sample_count": 0}
+
+    stored_backend = _stored_backend(row["embedding_json"])
+    stale = stored_backend != backend
     return {
         **base,
-        "enrolled": row["sample_count"] >= MIN_ENROLL_SAMPLES,
+        "enrolled": row["sample_count"] >= MIN_ENROLL_SAMPLES and not stale,
         "sample_count": row["sample_count"],
+        "enrolled_backend": stored_backend,
+        "needs_reenrollment": stale,
+        "reenrollment_reason": (
+            f"Voice ID was recorded with the {stored_backend} model; this device "
+            f"now uses {backend}, which is more accurate. One quick re-enrolment "
+            f"and you are done."
+        ) if stale else None,
         "updated_at": row["updated_at"],
         "created_at": row["created_at"],
     }
@@ -418,9 +682,18 @@ def enroll(vpa: str, audio_blobs: list[bytes], holder_hint: str = "") -> dict:
     if len(audio_blobs) < MIN_ENROLL_SAMPLES:
         raise ValueError(f"Need at least {MIN_ENROLL_SAMPLES} voice samples for enrollment")
 
-    sample_vecs, pitch_means, liveness_reports = [], [], []
+    sample_vecs, pitch_means, liveness_reports, qualities = [], [], [], []
+    backend = "mfcc"
     for i, blob in enumerate(audio_blobs):
         samples = load_mono_16k(blob)
+
+        # Quality before anything else: a bad recording should be re-taken, not
+        # baked into the voiceprint where it degrades every future comparison.
+        q = assess_quality(samples)
+        qualities.append(q)
+        if not q["ok"]:
+            raise ValueError(f"Sample {i + 1}: {q['message']}. Please record it again.")
+
         live = assert_live(samples)
         liveness_reports.append(live)
         if not live["live"]:
@@ -429,16 +702,34 @@ def enroll(vpa: str, audio_blobs: list[bytes], holder_hint: str = "") -> dict:
                 "Use a live mic — phone playbacks and deepfakes are blocked."
             )
         vec, meta = extract_embedding(blob)
+        backend = meta.get("backend", backend)
         sample_vecs.append(vec)
         if meta.get("pitch_mean"):
             pitch_means.append(meta["pitch_mean"])
+
+    # Drop a sample that disagrees with the rest — a cough, a cut-off word, a
+    # door slamming. One bad sample drags the centroid for every later check.
+    dropped = 0
+    if len(sample_vecs) >= 4:
+        med = []
+        for i, v in enumerate(sample_vecs):
+            others = [cosine_similarity(v, w) for j, w in enumerate(sample_vecs) if j != i]
+            med.append(float(np.median(others)))
+        best = max(med)
+        keep = [v for v, m in zip(sample_vecs, med) if m >= best - ENROLL_OUTLIER_MARGIN]
+        if MIN_ENROLL_SAMPLES <= len(keep) < len(sample_vecs):
+            dropped = len(sample_vecs) - len(keep)
+            sample_vecs = keep
 
     pair_scores = []
     for i in range(len(sample_vecs)):
         for j in range(i + 1, len(sample_vecs)):
             pair_scores.append(cosine_similarity(sample_vecs[i], sample_vecs[j]))
     worst = min(pair_scores) if pair_scores else 1.0
-    min_sim = ENROLL_PAIR_MIN_SIM if (_use_resemblyzer is not False) else 0.10
+    # How tightly this speaker's own samples cluster. Drives their threshold.
+    consistency = float(np.mean(pair_scores)) if pair_scores else 1.0
+
+    min_sim = {"ecapa": 0.45, "resemblyzer": ENROLL_PAIR_MIN_SIM}.get(backend, 0.10)
     if worst < min_sim:
         raise ValueError(
             f"Enrollment samples look too different (lowest similarity {worst:.2f}). "
@@ -448,7 +739,7 @@ def enroll(vpa: str, audio_blobs: list[bytes], holder_hint: str = "") -> dict:
     mean_vec = np.mean(np.stack(sample_vecs, axis=0), axis=0)
     mean_vec = mean_vec / (np.linalg.norm(mean_vec) + 1e-9)
     enroll_pitch = float(np.mean(pitch_means)) if pitch_means else 0.0
-    backend = "resemblyzer" if sample_vecs[0].size == 256 else "mfcc"
+    threshold = adaptive_threshold(backend, consistency)
 
     with _db() as conn:
         conn.execute(
@@ -469,6 +760,8 @@ def enroll(vpa: str, audio_blobs: list[bytes], holder_hint: str = "") -> dict:
                     "vec": mean_vec.tolist(),
                     "pitch_mean": enroll_pitch,
                     "backend": backend,
+                    "consistency": round(consistency, 4),
+                    "threshold": threshold,
                 }),
                 json.dumps([v.tolist() for v in sample_vecs]),
                 len(sample_vecs),
@@ -480,9 +773,13 @@ def enroll(vpa: str, audio_blobs: list[bytes], holder_hint: str = "") -> dict:
         "success": True,
         "enrolled": True,
         "sample_count": len(sample_vecs),
+        "samples_dropped": dropped,
         "backend": backend,
+        "consistency": round(consistency, 4),
+        "threshold": threshold,
+        "quality": qualities,
         "anti_spoof": "aasist+spectral",
-        "message": "Voice biometric enrolled with anti-spoof protection. "
+        "message": "Voice ID enrolled with anti-spoof protection. "
                    "Only your live voice can authorize payments.",
     }
 
@@ -497,69 +794,103 @@ def verify(vpa: str, audio_bytes: bytes) -> dict:
         raise LookupError("No voice biometric enrolled for this account")
 
     samples = load_mono_16k(audio_bytes)
+    # Quality first — refuse to decide on audio that cannot support a decision.
+    quality = assess_quality(samples)
+    if not quality["ok"]:
+        return {
+            "matched": False,
+            "score": 0.0,
+            "threshold": 0.0,
+            "quality": quality,
+            "fail_reason": "poor_audio",
+            "message": f"Could not check your voice — {quality['message']}.",
+        }
+
     live = assert_live(samples)
     if not live["live"]:
         return {
             "matched": False,
             "score": 0.0,
-            "threshold": VERIFY_THRESHOLD,
+            "threshold": 0.0,
+            "quality": quality,
             "liveness": live,
             "fail_reason": "liveness_failed",
             "message": f"Replay/fake voice blocked — {live['message']}",
         }
 
     probe, meta = extract_embedding(audio_bytes)
+    probe_backend = meta.get("backend", "mfcc")
     stored = json.loads(row["embedding_json"])
     if isinstance(stored, list):
         mean_vec = np.asarray(stored, dtype=np.float32)
-        enroll_pitch = 0.0
         backend = "legacy"
+        consistency, stored_threshold = 0.0, None
     else:
         mean_vec = np.asarray(stored["vec"], dtype=np.float32)
-        enroll_pitch = float(stored.get("pitch_mean") or 0.0)
         backend = stored.get("backend", "unknown")
+        consistency = float(stored.get("consistency") or 0.0)
+        stored_threshold = stored.get("threshold")
 
-    if probe.size != mean_vec.size:
+    # Embeddings from different models are not comparable at all — a cosine
+    # between an ECAPA and a GE2E vector is meaningless, not merely noisy.
+    if probe.size != mean_vec.size or (backend not in ("legacy", "unknown")
+                                       and backend != probe_backend):
         raise ValueError(
-            "Voice model upgraded since enrollment — please re-enroll Voice ID."
+            "Voice ID was enrolled with a different model — please re-enroll."
         )
 
     sample_vecs = [np.asarray(s, dtype=np.float32) for s in json.loads(row["samples_json"])]
     score_mean = cosine_similarity(probe, mean_vec)
     score_best = max(cosine_similarity(probe, s) for s in sample_vecs)
-    score = 0.55 * score_mean + 0.45 * score_best
+    raw = 0.55 * score_mean + 0.45 * score_best
 
-    thr = VERIFY_THRESHOLD if probe.size == 256 else MFCC_VERIFY_THRESHOLD
+    # Normalise against other enrolled speakers so one threshold holds across
+    # microphones and rooms.
+    cohort = _cohort_vectors(vpa, probe_backend)
+    z, norm_info = as_norm(raw, probe, mean_vec, cohort)
 
-    pitch_ok = True
-    probe_pitch = float(meta.get("pitch_mean") or 0.0)
-    if enroll_pitch > 60 and probe_pitch > 60:
-        ratio = probe_pitch / enroll_pitch
-        pitch_ok = 0.70 <= ratio <= 1.40
+    cos_thr = stored_threshold if stored_threshold else adaptive_threshold(probe_backend, consistency)
 
-    matched = score >= thr and pitch_ok
-    reason = ""
-    if not pitch_ok:
-        reason = "pitch_mismatch"
-    elif score < thr:
-        reason = "embedding_mismatch"
+    if z is not None:
+        # Normalised path: decide on the z-scale, and still require the raw
+        # cosine to clear a floor. Both must hold, so an unusually spread-out
+        # cohort cannot wave through a weak match on its own.
+        z_thr = adaptive_z_threshold(consistency)
+        matched = z >= z_thr and raw >= cos_thr * 0.85
+        score, thr = round(z, 4), z_thr
+        scale = "as_norm_z"
+        margin = round(z - z_thr, 4)
+        confidence = round(float(np.clip(0.5 + margin * 0.18, 0.0, 1.0)), 3)
+    else:
+        # Too few other enrolled speakers to normalise against — fall back to
+        # the raw cosine with the per-speaker threshold.
+        matched = raw >= cos_thr
+        score, thr = round(raw, 4), cos_thr
+        scale = "cosine"
+        margin = round(raw - cos_thr, 4)
+        confidence = round(float(np.clip(0.5 + margin * 4.0, 0.0, 1.0)), 3)
 
     return {
         "matched": matched,
-        "score": round(score, 4),
-        "threshold": thr,
+        "score": score,
+        "threshold": round(thr, 4),
+        "scale": scale,
+        "cosine_threshold": round(cos_thr, 4),
+        "margin": margin,
+        "confidence": confidence,
+        "score_raw": round(raw, 4),
         "score_mean": round(score_mean, 4),
         "score_best": round(score_best, 4),
-        "pitch_ok": pitch_ok,
-        "probe_pitch": round(probe_pitch, 1),
-        "enroll_pitch": round(enroll_pitch, 1),
-        "backend": backend,
+        "normalisation": norm_info,
+        "backend": probe_backend,
+        "enroll_consistency": round(consistency, 4),
+        "quality": quality,
         "liveness": live,
-        "fail_reason": reason,
+        "fail_reason": "" if matched else "embedding_mismatch",
         "message": (
             "Voice verified — payment authorized"
             if matched
-            else "Voice does not match enrolled biometric — payment blocked"
+            else "Voice does not match your enrolled Voice ID — payment blocked"
         ),
     }
 

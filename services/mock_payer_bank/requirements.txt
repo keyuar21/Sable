@@ -1,0 +1,5 @@
+# Remitter bank: FastAPI + the stdlib sqlite3 ledger. httpx calls the auth
+# service for step-up verification and syncs the Supabase mirror.
+uvicorn[standard]==0.30.1
+pydantic==2.7.1
+httpx==0.27.0

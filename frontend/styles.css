@@ -186,6 +186,9 @@ html, body {
 }
 .screen::-webkit-scrollbar { display: none; }
 .screen.active { display: flex; }
+/* Flex children must keep their natural height and let the screen scroll,
+   instead of compressing when the content is taller than the viewport. */
+.screen > *, .home-col > * { flex-shrink: 0; }
 
 @keyframes screenIn {
   from { opacity: 0; transform: translateY(12px); }
@@ -1807,3 +1810,353 @@ html, body {
   .arch-panel { display: none; }
   .phone-notch { display: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIGN-IN SCREEN
+   ═══════════════════════════════════════════════════════════════════════ */
+.login-screen {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 22px 36px;
+}
+
+.login-head { margin-bottom: 24px; }
+.login-mark {
+  width: 42px; height: 42px;
+  background: var(--blue);
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 3px;
+  margin-bottom: 16px;
+}
+.login-mark span { width: 4px; border-radius: 3px; background: #0d0d0d; transform: rotate(34deg); }
+.login-mark span:nth-child(1) { height: 11px; }
+.login-mark span:nth-child(2) { height: 17px; }
+.login-mark span:nth-child(3) { height: 23px; }
+
+.login-title {
+  font-family: 'Manrope', sans-serif;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -1.1px;
+  line-height: 1.15;
+  margin-bottom: 7px;
+}
+.login-sub { font-size: 13.5px; color: var(--text-2); line-height: 1.5; max-width: 34ch; }
+
+.login-field { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.login-label-row { display: flex; align-items: baseline; justify-content: space-between; }
+.login-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.login-refresh {
+  background: none; border: none; cursor: pointer;
+  font-family: inherit; font-size: 11.5px; font-weight: 600;
+  color: var(--text-3); letter-spacing: .3px;
+  transition: color .2s;
+}
+.login-refresh:hover { color: var(--blue); }
+
+/* Account picker — replaces the old <select> */
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 198px;   /* exactly 3 account cards, then scrolls */
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.account-list::-webkit-scrollbar { width: 6px; }
+.account-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+.account-card {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text);
+  transition: background .18s, border-color .18s;
+}
+.account-card:hover { background: var(--card-hover); }
+.account-card.selected { border-color: var(--blue); background: var(--blue-dim); }
+.account-avatar {
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: 50%;
+  background: #e7e1d7; color: #141414;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700;
+}
+.account-info { flex: 1; min-width: 0; }
+.account-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.account-vpa {
+  font-size: 11.5px; color: var(--text-3);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.account-radio {
+  width: 18px; height: 18px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border2);
+  position: relative;
+  transition: border-color .18s;
+}
+.account-card.selected .account-radio { border-color: var(--blue); }
+.account-card.selected .account-radio::after {
+  content: '';
+  position: absolute; inset: 3px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+.account-skeleton, .account-empty {
+  padding: 16px 14px;
+  border: 1px dashed var(--border2);
+  border-radius: 16px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* PIN + biometric row */
+.pin-row { display: flex; gap: 10px; }
+.login-input {
+  flex: 1; min-width: 0;
+  height: 50px;
+  padding: 0 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 5px;
+  outline: none;
+  transition: border-color .18s, box-shadow .18s;
+}
+.login-input::placeholder { letter-spacing: 0; font-weight: 500; color: var(--text-3); }
+.login-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+
+.bio-icon-btn {
+  width: 50px; height: 50px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all .18s;
+}
+.bio-icon-btn:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-dim); }
+
+.login-status {
+  min-height: 17px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.login-status.error { color: var(--red); }
+.login-status.ok    { color: var(--green); }
+.login-status.info  { color: var(--text-2); }
+
+.login-text-btn {
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 0;
+  background: none; border: none;
+  font-family: inherit; font-size: 12.5px; font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border2);
+  transition: color .2s, border-color .2s;
+}
+.login-text-btn:hover { color: var(--blue); border-color: var(--blue); }
+
+/* Sidebar brand — desktop only */
+.nav-brand { display: none; }
+
+/* Home columns are inert on mobile; they become grid columns on desktop */
+.home-col { display: contents; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESKTOP LAYOUT — real web app shell, no phone frame
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+  .desktop-bg { padding: 28px; align-items: center; }
+
+  .phone-frame {
+    width: 100%;
+    max-width: 1180px;
+    height: min(820px, calc(100vh - 56px));
+    max-height: none;
+    border-radius: 22px;
+    display: grid;
+    grid-template-columns: 236px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "nav header"
+      "nav main";
+    box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 40px 110px rgba(0,0,0,.75);
+  }
+
+  /* Phone chrome has no place on a desktop */
+  .phone-notch, .status-bar { display: none; }
+
+  /* Bottom nav becomes a sidebar */
+  .bottom-nav {
+    grid-area: nav;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 4px;
+    padding: 24px 14px;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    background: rgba(13,13,13,.6);
+  }
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px 26px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 21px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+  }
+  .nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 11px 14px;
+    border-radius: 12px;
+  }
+  .nav-item:hover { background: var(--card); color: var(--text); }
+  .nav-item:hover svg { transform: none; }
+  .nav-item.active { background: var(--blue-dim); color: var(--blue); }
+
+  /* Header + content */
+  .app-header { grid-area: header; padding: 20px 32px 4px; }
+  .app-header .app-logo { display: none; }
+  .app-header { justify-content: flex-end; }
+  .screen-container { grid-area: main; }
+  .screen { padding: 12px 0 32px; }
+
+  /* Centre every screen's content in a comfortable column */
+  .screen > * {
+    width: 100%;
+    max-width: 880px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Two-column home */
+  #screen-home {
+    display: none;
+    padding: 12px 32px 40px;
+  }
+  #screen-home.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    align-content: start;
+    gap: 0 28px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  #screen-home > .home-welcome { grid-column: 1 / -1; max-width: none; padding: 4px 0 24px; align-items: flex-start; }
+  .home-welcome h1 { font-size: 30px; }
+  .home-col { display: flex; flex-direction: column; min-width: 0; max-width: none; }
+  .home-col-b { }
+  #screen-home .balance-card,
+  #screen-home .quick-actions,
+  #screen-home .section-header,
+  #screen-home .merchant-chips,
+  #screen-home .txn-list,
+  #screen-home .settlement-mini { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+  #screen-home .balance-card { padding: 26px 26px; }
+  #screen-home .settlement-mini { margin-top: 16px; padding: 12px 14px; }
+  #screen-home .merchant-chips { flex-wrap: wrap; overflow: visible; }
+
+  /* Sign-in reads as a centred card, not a stretched phone column */
+  #screen-login.active { align-items: center; justify-content: flex-start; padding: 20px 0 32px; }
+  #screen-login .login-field { margin-bottom: 16px; }
+  #screen-login .login-head { margin-bottom: 20px; }
+  .login-screen {
+    max-width: 420px;
+    padding: 26px 28px 30px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    margin: auto;
+  }
+
+  /* Wide screens: the voice/PIN/result screens stay readable, not stretched */
+  .pin-screen-inner, .processing-screen-inner, .result-screen,
+  .voice-screen, .voice-enroll-inner, .onboard-card { max-width: 520px; }
+  #screen-confirm > * { max-width: 560px; }
+}
+
+/* Mid-size tablets keep the phone frame but let it breathe */
+@media (min-width: 801px) and (max-width: 1023px) {
+  .phone-frame { max-height: calc(100vh - 40px); }
+}
+
+/* ── Auth gating ──────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* Nav is both invisible and inert until the session is unlocked, so it cannot
+   be used to walk past the sign-in screen. */
+.bottom-nav.locked {
+  display: none;
+  pointer-events: none;
+}
+.header-avatar.hidden { display: none !important; }
+
+/* UPI ID input — the PIN field's wide letter-spacing is wrong for a handle */
+.login-input.vpa {
+  letter-spacing: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.login-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+@media (min-width: 1024px) {
+  /* Collapse the sidebar's grid column too, so sign-in has no empty rail */
+  .phone-frame:has(.bottom-nav.locked) { grid-template-columns: 0 1fr; }
+}
+
+
+/* ── Voice safety note ────────────────────────────────────────────────────── */
+/* The spoken code is a random nonce, not the customer's UPI PIN. Saying it in
+   public is safe; saying a PIN is not. Make that unmissable. */
+.voice-safety-note {
+  display: block;          /* inline flow — a flex row split the sentence in two */
+  margin: 14px 18px;
+  padding: 11px 13px;
+  background: rgba(230, 193, 109, .10);
+  border: 1px solid rgba(230, 193, 109, .32);
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  text-align: left;
+}
+.voice-safety-note strong { color: var(--amber); font-weight: 700; }
+.voice-safety-note .lock { margin-right: 5px; }
