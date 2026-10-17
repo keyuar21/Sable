@@ -1,0 +1,234 @@
+{
+  "operator": "jio",
+  "name": "Jio",
+  "colour": "#0a2885",
+  "updated_on": "2026-10-08",
+  "source": "https://www.jio.com/selfcare/plans/mobility/",
+  "note": "Representative Indian prepaid pricing, captured as a dated snapshot. Operators change tariffs often and run circle-specific offers, so confirm against the operator before relying on a price.",
+  "national": [
+    {
+      "id": "jio-19",
+      "price": 19,
+      "validity_days": 1,
+      "data": "2 GB",
+      "category": "topup",
+      "calls": "\u2014",
+      "sms": "\u2014",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "jio-29",
+      "price": 29,
+      "validity_days": 1,
+      "data": "2 GB",
+      "category": "data",
+      "calls": "\u2014",
+      "sms": "\u2014",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "jio-69",
+      "price": 69,
+      "validity_days": 7,
+      "data": "6 GB",
+      "category": "data",
+      "calls": "\u2014",
+      "sms": "\u2014",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "jio-91",
+      "price": 91,
+      "validity_days": 14,
+      "data": "\u2014",
+      "category": "validity",
+      "calls": "Unlimited",
+      "sms": "300 total",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "jio-189",
+      "price": 189,
+      "validity_days": 28,
+      "data": "2 GB total",
+      "category": "validity",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "jio-199",
+      "price": 199,
+      "validity_days": 28,
+      "data": "1.5 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-249",
+      "price": 249,
+      "validity_days": 28,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-299",
+      "price": 299,
+      "validity_days": 28,
+      "data": "2.5 GB/day",
+      "category": "popular",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema",
+        "JioSaavn"
+      ],
+      "popular": true
+    },
+    {
+      "id": "jio-349",
+      "price": 349,
+      "validity_days": 28,
+      "data": "3 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-399",
+      "price": 399,
+      "validity_days": 28,
+      "data": "3 GB/day + 50 GB",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-479",
+      "price": 479,
+      "validity_days": 56,
+      "data": "1.5 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-579",
+      "price": 579,
+      "validity_days": 56,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-799",
+      "price": 799,
+      "validity_days": 84,
+      "data": "1.5 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-899",
+      "price": 899,
+      "validity_days": 90,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-1199",
+      "price": 1199,
+      "validity_days": 98,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-1899",
+      "price": 1899,
+      "validity_days": 180,
+      "data": "2 GB/day",
+      "category": "annual",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema"
+      ],
+      "popular": false
+    },
+    {
+      "id": "jio-3599",
+      "price": 3599,
+      "validity_days": 365,
+      "data": "2.5 GB/day",
+      "category": "annual",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "JioTV",
+        "JioCinema",
+        "JioSaavn"
+      ],
+      "popular": false
+    }
+  ],
+  "circle_overrides": {}
+}

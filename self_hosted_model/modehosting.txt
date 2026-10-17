@@ -1,0 +1,90 @@
+This is a really good question because AI model replicas behave differently from ordinary application replicas in terms of cost, memory, and scaling.
+
+In a normal application, running five replicas is usually straightforward. With an LLM, every replica can require gigabytes of RAM or VRAM and may need to load the model weights independently.
+
+## 1. What happens if you run multiple replicas of GPT-4?
+
+Imagine you deploy an application using Kubernetes with three replicas.
+
+Kubernetes Service / Load Balancer
+
+Distributes inference requests
+
+Pod 1
+
+Model weights
+
+GPU memory
+
+Pod 2
+
+Model weights
+
+GPU memory
+
+Pod 3
+
+Model weights
+
+GPU memory
+
+Each replica typically loads its own copy of the model weights into its allocated accelerator memory.
+
+One important correction: GPT-4 itself is a proprietary hosted model. You cannot download its weights and deploy replicas in your own Kubernetes cluster. The example below applies to self-hostable models such as Qwen or Llama.
+
+## 2. Is replicating an AI model good or bad?
+
+It's good when you need more inference capacity or availability, but expensive when you don't need the extra capacity.
+
+| Factor                   | More model replicas              |
+| ------------------------ | -------------------------------- |
+| Concurrent requests      | Improves capacity                |
+| Availability             | Can improve resilience           |
+| Latency under heavy load | Can improve by reducing queueing |
+| GPU memory consumption   | Increases substantially          |
+| Infrastructure cost      | Increases substantially          |
+| Model intelligence       | Does not automatically improve   |
+
+For example, three replicas of the same 7B model do not become a 21B model. Each replica is still the same 7B model; Kubernetes simply distributes requests across the replicas.
+
+## 3. What about AI-specific scaling?
+
+There are three different architectures worth understanding.
+
+[Снижаем стоимость инференса. Часть 2. IBM KServe ModelMesh, vLLM Production Stack и что внутри у нашего решения / Хабр](https://images.openai.com/static-rsc-4/3C5sqUoJ3a4Qp0ungF6yKSuOd2g7nX04ZgIsOWdw-8COOYINGJdQ_5_E43mq3NhE9wYeAV48VfG7WAz6Z9MHNkgNCPtHaP-uWaln8qm2DicGCdzKfJXXeJbFK7M2IS_6Ui-zj-CumstG8xZFAp1wyQMp2pwGPvRGe_LBqj5acBk?purpose=inline)
+
+A. Replicas — horizontal scaling
+
+Run the same model independently on multiple GPUs. Each replica serves different requests.
+
+Best for: high request volume, concurrent users and availability.
+
+[What is GPU Memory and Why it Matters for LLM Inference](https://images.openai.com/static-rsc-4/8FT17Tz3T0lFuKXJtImtwWXT8eSKs814Lo6wlU06zDRXojoD5VEQdOXyWEBCD1qfK4y1RzufCn101nXXvfuOm0LinUNEeMomK_Cf_qaKaxtKYtkWm3U_W2QDP6rD9zgudN3JVB6pMMS1jFIw3wVWrkLDW4veq7fHWJEDJE9CqOA?purpose=inline)
+
+B. Tensor parallelism — one model across GPUs
+
+Split a single model across multiple GPUs. This helps when the model doesn't fit on one GPU or needs more compute.
+
+Best for: larger models such as 32B or 70B, depending on precision and hardware.
+
+[A survey on Inference Serving for Large Language Models | hello@woonyee.org \~ $](https://images.openai.com/static-rsc-4/mtI2Ym9aLJNhSDss-rjN1nDnpPN-x-172qUsrx18LLKPhGxMMrXKNTuAzSO3i0lEj80kHwGcVJMF1dcDX_0Y6RyW40amlHOHzrwN9fw-t3-zVAd0ZPsV9XTN22k_G4ehLgsgnGcZjlrOFAoEaRQmhB3XPhNuxkagDDIu2bPiYSg?purpose=inline)
+
+C. Efficient serving — better utilization
+
+Use continuous batching, KV-cache management and optimized inference engines such as vLLM to serve more requests on the same GPU.
+
+Best for: improving throughput before paying for more GPUs.
+
+## 4. What I recommend for your payment AI project
+
+Since your goal is to learn production-grade AI infrastructure and DevOps, I'd build it in this order:
+
+1. Start with one model replica. Deploy a quantized, self-hostable model behind an internal API.
+2. Measure actual performance. Track time to first token, tokens per second, concurrent requests, queue length and GPU memory.
+3. Optimize the inference server. Test batching and concurrency settings before adding GPUs.
+4. Scale horizontally. Add another model replica when measurements show a capacity or availability need, and ensure the cluster has enough GPU capacity.
+5. Scale intelligently. Use request queues, autoscaling and GPU-aware scheduling where supported. Don't scale just because CPU utilization is low or high; inference workloads need model-specific metrics.
+
+One subtle but important point: two replicas on one GPU may compete for memory and compute, and can perform worse than one well-configured server. A replica is not free simply because Kubernetes can create it.
+
+My recommendation: for your first version, use one vLLM serving replica and separate pods for the agent and MCP server. Then benchmark a second replica. That will teach you the difference between ordinary microservice scaling and AI inference scaling without paying for unnecessary GPUs.

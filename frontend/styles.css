@@ -2383,3 +2383,126 @@ html, body {
 .rc-or::before, .rc-or::after {
   content: ''; flex: 1; height: 1px; background: var(--border);
 }
+
+/* ── Recharge reminder banner ─────────────────────────────────────────────── */
+.rc-reminder {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 18px 16px; padding: 13px 14px;
+  background: rgba(230,193,109,.09);
+  border: 1px solid rgba(230,193,109,.34);
+  border-radius: 16px;
+}
+.rc-reminder.hidden { display: none; }
+.rc-reminder.expired {
+  background: rgba(238,107,104,.09);
+  border-color: rgba(238,107,104,.36);
+}
+.rc-rem-icon { font-size: 19px; flex-shrink: 0; }
+.rc-rem-text { flex: 1; min-width: 0; }
+.rc-rem-title { font-size: 13.5px; font-weight: 600; }
+.rc-rem-sub   { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+.rc-rem-btn {
+  flex-shrink: 0; padding: 8px 14px; border: none; border-radius: 10px;
+  background: var(--amber); color: #141414;
+  font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.rc-reminder.expired .rc-rem-btn { background: var(--blue); color: #fff; }
+.rc-rem-btn:hover { filter: brightness(1.08); }
+
+/* The provider's own plan wording, when live plans are in use */
+.rc-plan-detail {
+  font-size: 11px; color: var(--text-3); margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Recharge: circle picker and category filter ──────────────────────────── */
+.rc-circle-row {
+  display: flex; align-items: center; gap: 10px; padding: 0 18px 12px;
+}
+.rc-circle-label {
+  font-size: 10.5px; letter-spacing: 1.1px; text-transform: uppercase;
+  color: var(--text-3); font-weight: 700; flex-shrink: 0;
+}
+.rc-circle {
+  flex: 1; min-width: 0; height: 40px; padding: 0 12px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; color: var(--text);
+  font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.rc-cats {
+  display: flex; gap: 7px; padding: 0 18px 12px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.rc-cats::-webkit-scrollbar { display: none; }
+.rc-cat {
+  flex-shrink: 0; padding: 7px 13px; border-radius: 18px;
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text-2); font-family: inherit; font-size: 12px;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.rc-cat:hover { background: var(--card-hover); }
+.rc-cat.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.rc-disclaimer a { color: var(--blue); text-decoration: none; }
+.rc-disclaimer a:hover { text-decoration: underline; }
+
+/* ── Electricity bill ─────────────────────────────────────────────────────── */
+/* Five quick actions now, so the grid tracks the count instead of a fixed 4. */
+.quick-actions { grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); }
+
+.el-select { width: 100%; margin-top: 10px; }
+.el-bill {
+  margin: 4px 18px 26px; padding: 17px 18px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 18px;
+}
+.el-bill.hidden { display: none; }
+.el-bill.soon    { border-color: rgba(230,193,109,.42); background: rgba(230,193,109,.06); }
+.el-bill.overdue { border-color: rgba(238,107,104,.45); background: rgba(238,107,104,.07); }
+.el-bill.paid    { border-color: rgba(140,214,139,.4);  background: rgba(140,214,139,.06); }
+
+.el-bill-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 14px;
+}
+.el-bill-board    { font-size: 14px; font-weight: 700; }
+.el-bill-consumer {
+  font-size: 11.5px; color: var(--text-3); margin-top: 3px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+.el-bill-pill {
+  flex-shrink: 0; padding: 3px 9px; border-radius: 6px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .5px;
+  background: var(--card-hover); color: var(--text-2); white-space: nowrap;
+}
+.el-bill.soon    .el-bill-pill { background: rgba(230,193,109,.2); color: var(--amber); }
+.el-bill.overdue .el-bill-pill { background: rgba(238,107,104,.2); color: var(--red); }
+.el-bill.paid    .el-bill-pill { background: rgba(140,214,139,.2); color: var(--green); }
+
+.el-bill-amount {
+  font-size: 30px; font-weight: 700; letter-spacing: -1px; margin-bottom: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.el-bill-rows { display: flex; flex-direction: column; gap: 8px; }
+.el-bill-rows > div {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12.5px; padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,.045);
+}
+.el-bill-rows > div:last-child { border-bottom: none; padding-bottom: 0; }
+.el-bill-rows span:first-child { color: var(--text-3); }
+.el-bill-rows span:last-child  { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Collapsed tariff breakdown — detail on demand, not clutter by default. */
+.el-break { margin-top: 14px; }
+.el-break summary {
+  cursor: pointer; font-size: 12px; color: var(--blue);
+  padding: 8px 0; list-style: none;
+}
+.el-break summary::-webkit-details-marker { display: none; }
+.el-break summary::before { content: '▸ '; }
+.el-break[open] summary::before { content: '▾ '; }
+.el-break .el-bill-rows { margin-top: 6px; }
+.el-tariff-note {
+  font-size: 10.5px; color: var(--text-3); line-height: 1.5; margin-top: 10px;
+}

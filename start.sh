@@ -101,7 +101,11 @@ PSP_PID=$!
 # ── Start recharge service ───────────────────────────────────────────────────
 sleep 1
 echo -e "${GREEN}[6/8] Starting Recharge Service    → http://localhost:5007${NC}"
-PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" VERIPHONE_API_KEY="${VERIPHONE_API_KEY:-}" \
+PYTHONUNBUFFERED=1 PYTHONPATH="$SVC_DIR" \
+  VERIPHONE_API_KEY="${VERIPHONE_API_KEY:-}" \
+  PLAN_PROVIDER="${PLAN_PROVIDER:-builtin}" \
+  RAPIDAPI_KEY="${RAPIDAPI_KEY:-}" \
+  NIXINFO_CTRLKEY="${NIXINFO_CTRLKEY:-}" \
   $PY -m uvicorn mock_recharge.recharge_service:app --port 5007 --log-level info > /tmp/recharge.log 2>&1 &
 RECHARGE_PID=$!
 

@@ -1,0 +1,121 @@
+{
+  "operator": "bsnl",
+  "name": "BSNL",
+  "colour": "#f47216",
+  "updated_on": "2026-10-08",
+  "source": "https://www.bsnl.co.in/opencms/bsnl/BSNL/services/mobile/prepaid.html",
+  "note": "Representative Indian prepaid pricing, captured as a dated snapshot. Operators change tariffs often and run circle-specific offers, so confirm against the operator before relying on a price.",
+  "national": [
+    {
+      "id": "bsnl-22",
+      "price": 22,
+      "validity_days": 1,
+      "data": "1 GB",
+      "category": "topup",
+      "calls": "\u2014",
+      "sms": "\u2014",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-107",
+      "price": 107,
+      "validity_days": 35,
+      "data": "3 GB total",
+      "category": "validity",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-147",
+      "price": 147,
+      "validity_days": 30,
+      "data": "10 GB total",
+      "category": "data",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-187",
+      "price": 187,
+      "validity_days": 28,
+      "data": "2 GB/day",
+      "category": "popular",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": true
+    },
+    {
+      "id": "bsnl-199",
+      "price": 199,
+      "validity_days": 30,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-247",
+      "price": 247,
+      "validity_days": 30,
+      "data": "3 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-397",
+      "price": 397,
+      "validity_days": 70,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-439",
+      "price": 439,
+      "validity_days": 90,
+      "data": "1.5 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-797",
+      "price": 797,
+      "validity_days": 180,
+      "data": "2 GB/day",
+      "category": "annual",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "bsnl-1999",
+      "price": 1999,
+      "validity_days": 365,
+      "data": "2 GB/day",
+      "category": "annual",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    }
+  ],
+  "circle_overrides": {}
+}

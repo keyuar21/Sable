@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>UPI Sim — Voice Payments</title>
   <meta name="description" content="A polished voice-first UPI payment simulator.">
-  <link rel="stylesheet" href="styles.css?v=rc-2">
+  <link rel="stylesheet" href="styles.css?v=bill-2">
 </head>
 <body>
 
@@ -301,6 +301,9 @@
           <div class="home-security"><span></span> SECURED</div>
         </div>
 
+        <!-- Recharge reminder — only rendered when something is actually due -->
+        <div class="rc-reminder hidden" id="rc-reminder"></div>
+
         <div class="home-col home-col-a">
 
         <!-- Balance Card -->
@@ -335,6 +338,10 @@
           <button class="action-btn" id="btn-recharge">
             <div class="action-icon">📱</div>
             <span class="action-label">Recharge</span>
+          </button>
+          <button class="action-btn" id="btn-electricity">
+            <div class="action-icon">💡</div>
+            <span class="action-label">Electricity</span>
           </button>
         </div>
 
@@ -400,6 +407,34 @@
 
       </div><!-- /screen-home -->
 
+      <!-- ══════════════════════════════ ELECTRICITY SCREEN ══════════════ -->
+      <div class="screen" id="screen-electricity">
+        <div class="back-header">
+          <button class="back-btn" id="btn-el-back" title="Back">←</button>
+          <span class="back-title">Electricity Bill</span>
+        </div>
+
+        <div class="rc-input-block">
+          <label class="login-label" for="el-state">State</label>
+          <select class="rc-circle el-select" id="el-state"></select>
+
+          <label class="login-label" for="el-board" style="margin-top:14px;display:block">Board</label>
+          <select class="rc-circle el-select" id="el-board"></select>
+
+          <label class="login-label" for="el-consumer" id="el-consumer-label"
+                 style="margin-top:14px;display:block">Consumer Number</label>
+          <input id="el-consumer" class="login-input vpa" type="text" inputmode="numeric"
+                 placeholder="Enter your number" autocomplete="off" />
+
+          <button class="primary-btn" id="btn-el-fetch">
+            <span>Fetch bill</span><span class="btn-arrow">→</span>
+          </button>
+          <div class="login-status" id="el-status"></div>
+        </div>
+
+        <div class="el-bill hidden" id="el-bill"></div>
+      </div><!-- /screen-electricity -->
+
       <!-- ══════════════════════════════ RECHARGE SCREEN ═════════════════ -->
       <div class="screen" id="screen-recharge">
         <div class="back-header">
@@ -438,6 +473,13 @@
             <span class="section-link" id="rc-switch-op">Change operator</span>
           </div>
           <div class="rc-op-picker hidden" id="rc-op-picker"></div>
+
+          <div class="rc-circle-row">
+            <label class="rc-circle-label" for="rc-circle">Circle</label>
+            <select class="rc-circle" id="rc-circle"></select>
+          </div>
+
+          <div class="rc-cats" id="rc-cats"></div>
           <div class="rc-plans" id="rc-plans"></div>
           <p class="rc-disclaimer" id="rc-disclaimer"></p>
         </div>
@@ -851,6 +893,6 @@
 <script src="config.js"></script>
 <script src="webauthn.js?v=1"></script>
 <script src="voicebio.js?v=voice-2"></script>
-<script src="app.js?v=rc-2"></script>
+<script src="app.js?v=bill-2"></script>
 </body>
 </html>

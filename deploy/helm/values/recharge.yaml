@@ -25,15 +25,24 @@ app:
       # number range, so a ported number shows its old operator.
       mode: static
     plans:
-      # Sample tariffs. Indian prepaid pricing changes often and there is no
-      # single open feed, so these are representative, not authoritative.
+      # builtin -> the sample catalogue shipped with the service.
+      # rapidapi -> live tariffs from nixinfo via RapidAPI. That needs BOTH
+      # RAPIDAPI_KEY and NIXINFO_CTRLKEY in the secret below; without both the
+      # service stays on builtin rather than failing.
       source: builtin
+      cache_hours: 24
       operators: [jio, airtel, vi, bsnl]
+    reminders:
+      # How far ahead to warn that a plan is running out.
+      window_days: 5
 
-# Create this secret out of band:
-#   kubectl -n upi create secret generic upi-veriphone \
-#     --from-literal=VERIPHONE_API_KEY=...
-existingSecret: upi-veriphone
+# Create this secret out of band. Keys never belong in a values file.
+#   kubectl -n upi create secret generic upi-recharge-keys \
+#     --from-literal=VERIPHONE_API_KEY=... \
+#     --from-literal=PLAN_PROVIDER=rapidapi \
+#     --from-literal=RAPIDAPI_KEY=... \
+#     --from-literal=NIXINFO_CTRLKEY=...
+existingSecret: upi-recharge-keys
 
 persistence:
   enabled: true

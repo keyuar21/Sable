@@ -33,11 +33,13 @@ const state = {
   voiceEnroll: { step: 0, samples: [], recording: false },
   voiceConfirmBusy: false,
   pendingRecharge: null,   // set while a recharge payment is in flight
+  pendingBill: null,       // set while an electricity payment is in flight
 };
 
 // Start periodic tasks after a successful login
 function startAfterLogin() {
   refreshBalance();
+  checkRechargeReminders();
 
   // Settlement countdown every 2s
   updateSettlementCountdown();
@@ -94,6 +96,40 @@ function normaliseMobile(raw) {
   if (d.length === 12 && d.startsWith('91')) return d.slice(2);
   if (d.length === 11 && d.startsWith('0')) return d.slice(1);
   return null;
+}
+
+const RECHARGE_NUMBERS_KEY = 'upiSim.rechargeNumbers.v1';
+const BILL_REFS_KEY = 'upiSim.billRefs.v1';
+
+/** "board:consumer_no" pairs this device has looked up, for bill reminders. */
+function knownBillRefs() {
+  try { return JSON.parse(localStorage.getItem(BILL_REFS_KEY) || '[]'); } catch { return []; }
+}
+
+function rememberBillRef(board, consumerNo) {
+  if (!board || !consumerNo) return;
+  const ref = `${board}:${consumerNo}`;
+  try {
+    const kept = knownBillRefs().filter(x => x !== ref);
+    localStorage.setItem(BILL_REFS_KEY, JSON.stringify([ref, ...kept].slice(0, 10)));
+  } catch { /* storage unavailable — reminders simply will not persist */ }
+}
+
+/** Numbers this device has recharged before, plus its own. */
+function knownRechargeNumbers() {
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(RECHARGE_NUMBERS_KEY) || '[]'); } catch { saved = []; }
+  const mine = myMobile();
+  return [...new Set([mine, ...saved].filter(Boolean))];
+}
+
+function rememberRechargeNumber(phone) {
+  const n = normaliseMobile(phone);
+  if (!n) return;
+  try {
+    const saved = knownRechargeNumbers().filter(x => x !== n);
+    localStorage.setItem(RECHARGE_NUMBERS_KEY, JSON.stringify([n, ...saved].slice(0, 10)));
+  } catch { /* storage unavailable — reminders simply will not persist */ }
 }
 
 /** The number this device was set up with, if we know it. */
@@ -183,6 +219,8 @@ function showScreen(name) {
   const navMap = { home: 'nav-home', history: 'nav-history', settlement: 'nav-settlement', voice: 'nav-voice' };
   const navId = navMap[name];
   if (navId) document.getElementById(navId)?.classList.add('active');
+
+  if (name === 'home' && state.loggedIn) checkRechargeReminders();
 
   syncAuthChrome();
 }
@@ -650,7 +688,8 @@ function handleMerchantChipClick(el) {
 // recharge service and never reaches this file. Plans come from that operator's
 // catalogue, and paying for one reuses the ordinary UPI payment flow.
 
-const rc = { phone: null, operator: null, operatorName: null, plans: [], pickerOpen: false };
+const rc = { phone: null, operator: null, operatorName: null, plans: [],
+             pickerOpen: false, circle: '', category: 'all' };
 let rcDebounce = null;
 
 function openRecharge() {
@@ -759,19 +798,29 @@ async function showOperatorPicker(open) {
   }
 }
 
-async function loadPlans(operator) {
-  const wrap = document.getElementById('rc-plans-wrap');
-  const list = document.getElementById('rc-plans');
-  wrap.classList.remove('hidden');
-  list.innerHTML = '<div class="rc-empty">Loading plans…</div>';
+/** Populate the circle dropdown once; prices can differ by service area. */
+async function loadCircles() {
+  const sel = document.getElementById('rc-circle');
+  if (sel.dataset.loaded) return;
   try {
-    const d = await fetch(`${API.recharge}/plans/${operator}`).then(r => r.json());
-    rc.operator = operator;
-    rc.operatorName = d.operator_name;
-    rc.plans = d.plans;
-    document.getElementById('rc-plans-title').textContent = `${d.operator_name} plans`;
-    document.getElementById('rc-disclaimer').textContent = d.disclaimer;
-    list.innerHTML = d.plans.map(p => `
+    const { circles } = await fetch(`${API.recharge}/circles`).then(r => r.json());
+    sel.innerHTML = '<option value="">All India</option>' +
+      circles.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    sel.dataset.loaded = '1';
+    sel.addEventListener('change', () => {
+      rc.circle = sel.value;
+      if (rc.operator) loadPlans(rc.operator);
+    });
+  } catch { sel.innerHTML = '<option value="">All India</option>'; }
+}
+
+function renderPlanList() {
+  const list = document.getElementById('rc-plans');
+  const rows = rc.category === 'all'
+    ? rc.plans
+    : rc.plans.filter(p => (p.category || 'other') === rc.category);
+  if (!rows.length) { list.innerHTML = '<div class="rc-empty">No plans in this group</div>'; return; }
+  list.innerHTML = rows.map(p => `
       <button class="rc-plan" data-plan="${p.id}">
         <div class="rc-plan-price">₹${p.price}</div>
         <div class="rc-plan-body">
@@ -781,11 +830,49 @@ async function loadPlans(operator) {
           </div>
           <div class="rc-plan-meta">${p.validity_days} days · ${escapeHtml(p.calls)} calls · ${escapeHtml(p.sms)}</div>
           ${p.extras.length ? `<div class="rc-plan-extras">${p.extras.map(escapeHtml).join(' · ')}</div>` : ''}
+          ${p.detail ? `<div class="rc-plan-detail">${escapeHtml(p.detail)}</div>` : ''}
         </div>
         <span class="rc-plan-go">›</span>
       </button>`).join('');
-    list.querySelectorAll('.rc-plan').forEach(b =>
-      b.addEventListener('click', () => payForPlan(b.dataset.plan)));
+  list.querySelectorAll('.rc-plan').forEach(b =>
+    b.addEventListener('click', () => payForPlan(b.dataset.plan)));
+}
+
+function renderCategories(cats) {
+  const el = document.getElementById('rc-cats');
+  const labels = { popular: 'Popular', unlimited: 'Unlimited', data: 'Data',
+                   validity: 'Validity', annual: 'Long term', topup: 'Top-up' };
+  const all = ['all', ...cats];
+  el.innerHTML = all.map(c =>
+    `<button class="rc-cat ${c === rc.category ? 'on' : ''}" data-cat="${c}">${
+      c === 'all' ? 'All' : escapeHtml(labels[c] || c)}</button>`).join('');
+  el.querySelectorAll('.rc-cat').forEach(b =>
+    b.addEventListener('click', () => {
+      rc.category = b.dataset.cat;
+      renderCategories(cats);
+      renderPlanList();
+    }));
+}
+
+async function loadPlans(operator) {
+  const wrap = document.getElementById('rc-plans-wrap');
+  const list = document.getElementById('rc-plans');
+  wrap.classList.remove('hidden');
+  list.innerHTML = '<div class="rc-empty">Loading plans…</div>';
+  await loadCircles();
+  try {
+    const q = rc.circle ? `?circle=${encodeURIComponent(rc.circle)}` : '';
+    const d = await fetch(`${API.recharge}/plans/${operator}${q}`).then(r => r.json());
+    rc.operator = operator;
+    rc.operatorName = d.operator_name;
+    rc.plans = d.plans;
+    if (!d.categories.includes(rc.category)) rc.category = 'all';
+    document.getElementById('rc-plans-title').textContent = `${d.operator_name} plans`;
+    document.getElementById('rc-disclaimer').innerHTML =
+      `${escapeHtml(d.disclaimer)}${d.reference
+        ? `<br><a href="${escapeHtml(d.reference)}" target="_blank" rel="noopener">Operator's own page →</a>` : ''}`;
+    renderCategories(d.categories);
+    renderPlanList();
   } catch (e) {
     list.innerHTML = `<div class="rc-empty">Could not load plans — ${escapeHtml(e.message)}</div>`;
   }
@@ -826,6 +913,73 @@ function payForPlan(planId) {
 }
 
 /** Called after a payment succeeds; starts the plan's validity. */
+/**
+ * Show one banner for the most urgent number that needs recharging.
+ * Silent when nothing is due — a permanent nag is worse than no reminder.
+ */
+async function checkRechargeReminders() {
+  const el = document.getElementById('rc-reminder');
+  if (!el) return;
+  const numbers = knownRechargeNumbers();
+  const billRefs = knownBillRefs();
+  if (!numbers.length && !billRefs.length) { el.classList.add('hidden'); return; }
+
+  try {
+    const q = new URLSearchParams({
+      phones: numbers.join(','),
+      bills: billRefs.join(','),
+    });
+    const { reminders } = await fetch(`${API.recharge}/reminders?${q}`).then(r => r.json());
+    if (!reminders || !reminders.length) { el.classList.add('hidden'); return; }
+
+    const r = reminders[0];
+    const n = Math.abs(r.days_left);
+    const plural = n === 1 ? '' : 's';
+    const isBill = r.kind === 'electricity';
+
+    const when = r.expired
+      ? (isBill ? `overdue by ${n} day${plural}` : `expired ${n} day${plural} ago`)
+      : r.days_left === 0
+        ? (isBill ? 'due today' : 'expires today')
+        : (isBill ? `due in ${n} day${plural}` : `expires in ${n} day${plural}`);
+
+    el.className = `rc-reminder ${r.expired ? 'expired' : ''}`;
+    el.innerHTML = isBill
+      ? `<span class="rc-rem-icon">${r.expired ? '⚠️' : '💡'}</span>
+         <div class="rc-rem-text">
+           <div class="rc-rem-title">${escapeHtml(r.board_name)} bill ${escapeHtml(when)}</div>
+           <div class="rc-rem-sub">${escapeHtml(r.consumer_no)} · ${escapeHtml(r.period)} · ₹${formatAmount(r.amount)}</div>
+         </div>
+         <button class="rc-rem-btn" id="rc-rem-go">Pay</button>`
+      : `<span class="rc-rem-icon">${r.expired ? '⚠️' : '⏳'}</span>
+         <div class="rc-rem-text">
+           <div class="rc-rem-title">${escapeHtml(r.operator_name || '')} plan ${escapeHtml(when)}</div>
+           <div class="rc-rem-sub">+91 ${escapeHtml((r.phone || '').replace('+91', ''))} · last ₹${r.price}${r.data ? ` · ${escapeHtml(r.data)}` : ''}</div>
+         </div>
+         <button class="rc-rem-btn" id="rc-rem-go">Recharge</button>`;
+
+    el.querySelector('#rc-rem-go').addEventListener('click', async () => {
+      if (isBill) {
+        await openElectricity();
+        document.getElementById('el-state').value =
+          (el.boards || []).find(b => b.id === r.board)?.state || document.getElementById('el-state').value;
+        renderBoardsForState();
+        document.getElementById('el-board').value = r.board;
+        onBoardChange();
+        document.getElementById('el-consumer').value = r.consumer_no;
+        fetchBill();
+      } else {
+        const local = (r.phone || '').replace('+91', '');
+        openRecharge();
+        document.getElementById('rc-phone').value = local;
+        detectOperator(local);
+      }
+    });
+  } catch {
+    el.classList.add('hidden');   // the service being down is not worth a banner
+  }
+}
+
 async function activatePendingRecharge(txnId) {
   const pending = state.pendingRecharge;
   if (!pending) return;
@@ -836,8 +990,162 @@ async function activatePendingRecharge(txnId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...pending, txn_id: txnId }),
     });
+    rememberRechargeNumber(pending.phone);
+    checkRechargeReminders();
   } catch (e) {
     console.warn('Recharge activation failed:', e);
+  }
+}
+
+// ── Electricity bills ─────────────────────────────────────────────────────────
+//
+// Bills are generated by our own biller service. The board portals are
+// consumer websites, not APIs, and real bill fetch needs BBPS and a licensed
+// biller agent — so nothing here contacts an operator.
+
+const el = { boards: [], board: null, bill: null };
+
+function setElStatus(msg, kind = 'info') {
+  const n = document.getElementById('el-status');
+  n.textContent = msg || '';
+  n.className = `login-status ${msg ? kind : ''}`;
+}
+
+async function openElectricity() {
+  if (!isUnlocked()) return showScreen('login');
+  showScreen('electricity');
+  document.getElementById('el-bill').classList.add('hidden');
+  setElStatus('');
+  if (el.boards.length) return;
+
+  try {
+    const d = await fetch(`${API.recharge}/electricity/boards`).then(r => r.json());
+    el.boards = d.boards;
+    const stateSel = document.getElementById('el-state');
+    stateSel.innerHTML = d.states.map(st =>
+      `<option value="${escapeHtml(st)}">${escapeHtml(st)}</option>`).join('');
+    stateSel.addEventListener('change', renderBoardsForState);
+    document.getElementById('el-board').addEventListener('change', onBoardChange);
+    renderBoardsForState();
+  } catch (e) {
+    setElStatus(`Could not load boards — ${e.message}`, 'error');
+  }
+}
+
+function renderBoardsForState() {
+  const st = document.getElementById('el-state').value;
+  const sel = document.getElementById('el-board');
+  const rows = el.boards.filter(b => b.state === st);
+  sel.innerHTML = rows.map(b =>
+    `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+  onBoardChange();
+}
+
+function onBoardChange() {
+  const id = document.getElementById('el-board').value;
+  el.board = el.boards.find(b => b.id === id) || null;
+  if (!el.board) return;
+  // Each board asks for a differently named, differently sized number.
+  document.getElementById('el-consumer-label').textContent = el.board.label;
+  const input = document.getElementById('el-consumer');
+  input.placeholder = `${el.board.digits} digits`;
+  input.maxLength = el.board.digits;
+  input.value = '';
+  document.getElementById('el-bill').classList.add('hidden');
+  setElStatus('');
+}
+
+async function fetchBill() {
+  const consumer = (document.getElementById('el-consumer').value || '').replace(/\D/g, '');
+  if (!el.board) return;
+  if (!consumer) return setElStatus(`Enter your ${el.board.label}`, 'error');
+
+  setElStatus('Fetching bill…', 'info');
+  try {
+    const res = await fetch(
+      `${API.recharge}/electricity/bill?board=${el.board.id}&consumer=${encodeURIComponent(consumer)}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'Could not fetch the bill');
+    el.bill = d;
+    rememberBillRef(d.board, d.consumer_no);
+    setElStatus('');
+    renderBill(d);
+  } catch (e) {
+    document.getElementById('el-bill').classList.add('hidden');
+    setElStatus(e.message, 'error');
+  }
+}
+
+function renderBill(d) {
+  const box = document.getElementById('el-bill');
+  const c = d.charges;
+  const paid = d.status === 'PAID';
+  const tone = paid ? 'paid' : d.overdue ? 'overdue' : d.due_soon ? 'soon' : '';
+  const dueText = paid ? `Paid on ${new Date(d.paid_at).toLocaleDateString('en-IN')}`
+    : d.overdue ? `Overdue by ${Math.abs(d.days_to_due)} day${Math.abs(d.days_to_due) === 1 ? '' : 's'}`
+    : d.days_to_due === 0 ? 'Due today' : `Due in ${d.days_to_due} days`;
+
+  box.className = `el-bill ${tone}`;
+  box.innerHTML = `
+    <div class="el-bill-head">
+      <div>
+        <div class="el-bill-board">${escapeHtml(d.board_name)}</div>
+        <div class="el-bill-consumer">${escapeHtml(d.consumer_name)} · ${escapeHtml(d.consumer_no)}</div>
+      </div>
+      <span class="el-bill-pill">${escapeHtml(paid ? 'PAID' : dueText.toUpperCase())}</span>
+    </div>
+    <div class="el-bill-amount">₹${formatAmount(d.amount)}</div>
+    <div class="el-bill-rows">
+      <div><span>Billing period</span><span>${escapeHtml(d.period)}</span></div>
+      <div><span>Units consumed</span><span>${d.units} kWh</span></div>
+      <div><span>Bill date</span><span>${new Date(d.bill_date).toLocaleDateString('en-IN')}</span></div>
+      <div><span>Due date</span><span>${new Date(d.due_date).toLocaleDateString('en-IN')}</span></div>
+    </div>
+    ${c ? `
+    <details class="el-break">
+      <summary>How this is calculated · ${escapeHtml(c.tariff_name || '')}</summary>
+      <div class="el-bill-rows">
+        ${c.slab_breakdown.map(b => `<div><span>${escapeHtml(b.range)} units × ₹${b.rate}</span><span>₹${formatAmount(b.amount)}</span></div>`).join('')}
+        <div><span>Wheeling charge</span><span>₹${formatAmount(c.wheeling_charge)}</span></div>
+        <div><span>Fixed charge</span><span>₹${formatAmount(c.fixed_charge)}</span></div>
+        <div><span>Electricity duty</span><span>₹${formatAmount(c.duty)}</span></div>
+      </div>
+      <p class="el-tariff-note">${escapeHtml(c.tariff_note || '')}</p>
+    </details>` : ''}
+    ${paid ? '' : `<button class="primary-btn" id="btn-el-pay"><span>Pay ₹${formatAmount(d.amount)}</span><span class="btn-arrow">→</span></button>`}
+    <p class="rc-disclaimer">
+      Generated by this simulator — no board portal is contacted.
+      <br><a href="${escapeHtml(d.portal)}" target="_blank" rel="noopener">${escapeHtml(d.board_name)} official portal →</a>
+    </p>`;
+  box.classList.remove('hidden');
+  document.getElementById('btn-el-pay')?.addEventListener('click', payBill);
+}
+
+/** Pay through the ordinary UPI flow; mark the bill settled on success. */
+function payBill() {
+  const d = el.bill;
+  if (!d) return;
+  state.pendingBill = { board: d.board, consumer_no: d.consumer_no };
+  showConfirm({
+    vpa: `${d.board}@billpay`,
+    name: `${d.board_name} · ${d.consumer_no}`,
+    icon: '💡',
+  }, d.amount);
+}
+
+async function settlePendingBill(txnId) {
+  const pending = state.pendingBill;
+  if (!pending) return;
+  state.pendingBill = null;
+  try {
+    await fetch(`${API.recharge}/electricity/pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...pending, txn_id: txnId }),
+    });
+    checkRechargeReminders();
+  } catch (e) {
+    console.warn('Bill settlement failed:', e);
   }
 }
 
@@ -1185,6 +1493,7 @@ function buildLogEntry(entry) {
 function showSuccess(data) {
   // A recharge only becomes active once the money has actually moved.
   activatePendingRecharge(data.txn_id);
+  settlePendingBill(data.txn_id);
 
   document.getElementById('success-amount').textContent  = `₹${formatAmount(data.amount)} sent`;
   document.getElementById('success-to').textContent      = `to ${state.payment.payeeName}`;
@@ -1211,7 +1520,7 @@ function showSuccess(data) {
 }
 
 // ── Failed screen ─────────────────────────────────────────────────────────────
-function clearPendingRecharge() { state.pendingRecharge = null; }
+function clearPendingRecharge() { state.pendingRecharge = null; state.pendingBill = null; }
 
 function showFailed(reason, txnId, stage) {
   document.getElementById('failed-amount').textContent  = `₹${formatAmount(state.payment.amount)}`;
@@ -1496,6 +1805,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Recharge
   document.getElementById('btn-recharge').addEventListener('click', () => openRecharge());
+  document.getElementById('btn-electricity').addEventListener('click', () => openElectricity());
+  document.getElementById('btn-el-back').addEventListener('click', () => showScreen('home'));
+  document.getElementById('btn-el-fetch').addEventListener('click', fetchBill);
+  document.getElementById('el-consumer').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') fetchBill();
+  });
   document.getElementById('btn-recharge-back').addEventListener('click', () => showScreen('home'));
   document.getElementById('rc-switch-op').addEventListener('click', () => showOperatorPicker(!rc.pickerOpen));
   document.getElementById('rc-mine').addEventListener('click', rechargeMyNumber);

@@ -1,0 +1,519 @@
+We'll skip the single-VM phase and go directly to the final architecture: self-hosted LLM inference inside Amazon EKS, connected to your payment agent through MCP.
+
+We'll build this as a proper AI infrastructure project, with GPU scheduling, private model serving, secure tool execution, CI/CD, observability, and failure handling.
+
+One important constraint before we start: EKS with GPU-backed worker nodes is not a free, continuously running solution. The Kubernetes control plane, worker nodes, storage, and related resources can incur charges. We can build and test the architecture in stages, but we must account for those costs rather than assume a free GPU is available.
+
+## Target architecture
+
+Operator dashboard
+
+Natural-language payment investigations
+
+Agent runtime + MCP server
+
+EKS · authorization · tool calls · audit
+
+Private Kubernetes Service
+
+OpenAI-compatible inference API · port 8000
+
+Dedicated GPU node group
+
+vLLM pod · quantized open-source model · persistent model cache
+
+Your payment microservices and ledgers remain separate from the inference workload.
+
+## Step 1 — Inspect your existing EKS cluster
+
+Run these commands from your laptop or the jump server where AWS CLI and `kubectl` are configured.
+
+```
+aws sts get-caller-identity
+aws eks list-clusters --region YOUR_AWS_REGION
+
+kubectl config current-context
+kubectl get nodes -o wide
+kubectl get namespaces
+kubectl get storageclass
+```
+
+If your cluster is already running, reuse it rather than creating another one.
+
+Check the Kubernetes version and cluster configuration:
+
+```
+kubectl version
+aws eks describe-cluster \
+  --name YOUR_CLUSTER_NAME \
+  --region YOUR_AWS_REGION \
+  --query 'cluster.{version:version,status:status,endpoint:endpoint}'
+```
+
+Before creating anything, establish which worker nodes you have and whether any have GPUs:
+
+```
+kubectl get nodes \
+  -o custom-columns='NODE:.metadata.name,INSTANCE:.metadata.labels.node\.kubernetes\.io/instance-type,GPUS:.status.allocatable.nvidia\.com/gpu'
+```
+
+If no GPU is available, the inference pod cannot run on GPU merely because you set a GPU limit in its YAML. You need GPU-backed compute capacity first.
+
+## Step 2 — Create a dedicated GPU node group
+
+Create a separate node group for inference instead of mixing the model with your payment services.
+
+For a first deployment, a GPU instance with around 24 GB of VRAM is a reasonable starting point for a quantized 7B coding model. This is a starting configuration, not a guarantee for every model, context length or concurrency level.
+
+In AWS, create an EKS managed node group with:
+
+- An appropriate NVIDIA GPU instance type, such as `g5.xlarge`, if available in your region and account.
+- An EKS-optimized NVIDIA GPU AMI compatible with your Kubernetes version.
+- A label such as `workload=inference`.
+- A taint such as `workload=inference:NoSchedule`, so ordinary application pods don't land on the GPU node.
+- A minimum of one GPU node while you're testing.
+
+Use AWS's [EKS GPU documentation](https://docs.aws.amazon.com/eks/latest/userguide/device-management-nvidia.html) for the supported AMI and GPU-device setup.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://docs.aws.amazon.com\&sz=32)
+
+Amazon EKS
+
++1
+
+
+
+Cost control: GPU instances are chargeable while running. For experimentation, use one node and scale the node group down when you're finished. Scaling to zero means the inference API will be unavailable.
+
+## Step 3 — Install GPU device support
+
+For a compatible EKS GPU node using an NVIDIA AMI that doesn't already provide the device plugin, install the NVIDIA Kubernetes device plugin:
+
+```
+helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
+helm repo update
+
+helm upgrade --install nvdp nvdp/nvidia-device-plugin \
+  --namespace nvidia \
+  --create-namespace
+```
+
+Verify that the plugin is ready and the node advertises GPU capacity:
+
+```
+kubectl get pods -n nvidia
+kubectl get nodes \
+  -o custom-columns='NODE:.metadata.name,GPUS:.status.allocatable.nvidia\.com/gpu'
+```
+
+Don't install a second device plugin if your node configuration already includes one. For newer EKS clusters using Kubernetes 1.34 or later, AWS also documents the Dynamic Resource Allocation (DRA) approach; we can evaluate that later rather than complicating the first deployment.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://docs.aws.amazon.com\&sz=32)
+
+Amazon EKS
+
++1
+
+
+
+## Step 4 — Create an inference namespace and model storage
+
+Keep inference resources separate from the payment application.
+
+```
+kubectl create namespace ai-inference
+```
+
+Create a file named `model-cache-pvc.yaml`:
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-model-cache
+  namespace: ai-inference
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 50Gi
+```
+
+Apply it:
+
+```
+kubectl apply -f model-cache-pvc.yaml
+kubectl get pvc -n ai-inference
+```
+
+This assumes your cluster has an EBS CSI driver and a `gp3` StorageClass. If it doesn't, check the available StorageClasses first and configure the supported storage option.
+
+The volume stores downloaded model files so pod replacement doesn't automatically require a fresh download. It does not preserve a running model process or keep a GPU instance alive.
+
+## Step 5 — Create an API key for inference
+
+The inference API should not be unauthenticated, even inside your cluster.
+
+```
+API_KEY="$(openssl rand -hex 32)"
+
+kubectl create secret generic vllm-api \
+  --namespace ai-inference \
+  --from-literal=api-key="$API_KEY"
+
+unset API_KEY
+```
+
+Kubernetes Secrets are a starting point. For a stronger deployment, use AWS Secrets Manager with the Secrets Store CSI Driver or an external-secrets controller, restrict access through IAM/RBAC, and encrypt secrets at rest.
+
+## Step 6 — Deploy the model server using vLLM
+
+For the initial deployment, I recommend Qwen2.5-Coder 7B Instruct, rather than jumping directly to 32B. It is a practical baseline for tool-oriented coding and investigation workflows, and easier to fit on a single GPU. We can benchmark larger models after the API works.
+
+vLLM provides an OpenAI-compatible server and supports Kubernetes deployment.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://docs.vllm.ai\&sz=32)
+
+vLLM
+
++1
+
+
+
+Create `vllm-deployment.yaml`:
+
+```
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-inference
+  namespace: ai-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-inference
+  template:
+    metadata:
+      labels:
+        app: vllm-inference
+    spec:
+      terminationGracePeriodSeconds: 120
+
+      nodeSelector:
+        workload: inference
+
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: inference
+          effect: NoSchedule
+
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          command: ["vllm"]
+          args:
+            - serve
+            - Qwen/Qwen2.5-Coder-7B-Instruct
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --served-model-name
+            - payment-coder
+            - --max-model-len
+            - "8192"
+            - --gpu-memory-utilization
+            - "0.90"
+            - --enable-auto-tool-choice
+            - --tool-call-parser
+            - hermes
+            - --api-key
+            - "$(VLLM_API_KEY)"
+
+          env:
+            - name: VLLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vllm-api
+                  key: api-key
+            - name: HF_HOME
+              value: /root/.cache/huggingface
+
+          ports:
+            - name: http
+              containerPort: 8000
+
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "6"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+
+          volumeMounts:
+            - name: model-cache
+              mountPath: /root/.cache/huggingface
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 90
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: vllm-model-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-inference
+  namespace: ai-inference
+spec:
+  type: ClusterIP
+  selector:
+    app: vllm-inference
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+
+```
+
+Before applying this manifest, make sure:
+
+- The GPU node has the label `workload=inference` and the matching taint, or adjust the scheduling rules.
+- Your cluster supports the selected NVIDIA GPU and its driver/runtime configuration.
+- The selected vLLM image version is tested. For reproducible releases, replace `latest` with a pinned version or image digest.
+- The model's tool-call format is compatible with the selected vLLM parser. Validate this with actual tool-calling tests; change the parser if needed.
+- The model's memory requirements fit your GPU. The CPU/memory values are starting requests, not universal sizing recommendations.
+
+Apply it:
+
+```
+kubectl apply -f vllm-deployment.yaml
+
+kubectl rollout status deployment/vllm-inference \
+  -n ai-inference --timeout=20m
+
+kubectl get pods -n ai-inference -o wide
+kubectl logs deployment/vllm-inference -n ai-inference -f
+```
+
+The first start downloads the model into the persistent cache. It can take a while, and the pod may fail if GPU memory is insufficient.
+
+## Step 7 — Test inference without exposing a public endpoint
+
+Keep the Service as `ClusterIP`. Do not expose the model directly to the internet.
+
+From your terminal:
+
+```
+kubectl port-forward \
+  -n ai-inference \
+  service/vllm-inference 8000:8000
+```
+
+In another terminal, retrieve the API key from the Kubernetes Secret and test the endpoint:
+
+```
+export VLLM_API_KEY="$(
+  kubectl get secret vllm-api \
+    -n ai-inference \
+    -o jsonpath='{.data.api-key}' | base64 --decode
+)"
+
+curl -sS http://localhost:8000/v1/models \
+  -H "Authorization: Bearer $VLLM_API_KEY"
+```
+
+Test a chat completion:
+
+```
+curl -sS http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer $VLLM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "payment-coder",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Explain idempotency in a payment API in three sentences."
+      }
+    ],
+    "temperature": 0.2,
+    "max_tokens": 150
+  }'
+```
+
+If both requests succeed, you have a working, self-hosted model API inside your EKS deployment.
+
+## Step 8 — Connect the model to your MCP agent
+
+Your agent and MCP server should call the model through the internal Kubernetes Service, not through a public tunnel.
+
+From another pod in the cluster, the model endpoint is:
+
+```
+http://vllm-inference.ai-inference.svc.cluster.local:8000/v1
+```
+
+Configure your agent runtime with:
+
+```
+LLM_BASE_URL=http://vllm-inference.ai-inference.svc.cluster.local:8000/v1
+LLM_MODEL=payment-coder
+LLM_API_KEY=<injected-from-Kubernetes-Secret>
+```
+
+Inject the API key through a Kubernetes Secret, not a hardcoded value in your Deployment or Git repository.
+
+The flow is:
+
+1. The agent sends the user's request to the model.
+2. The model selects a tool, such as `get_transaction_status`.
+3. The agent runtime validates the tool call and invokes your MCP server.
+4. MCP calls the relevant payment service.
+5. The result returns to the agent, which asks the model to explain the evidence.
+
+The MCP server and agent runtime are separate from vLLM. vLLM serves the model; it does not automatically create your MCP server or payment tools.
+
+For the first version, allow read-only tools such as transaction lookup, ledger comparison and reconciliation. Require explicit authorization for any state-changing operation.
+
+## Step 9 — Add observability
+
+Since this is also a DevOps project, instrument both the inference layer and the payment/agent layer.
+
+Prometheus + Grafana
+
+GPU utilization, GPU memory, pod restarts, request rate, errors, queue depth, model latency and token throughput.
+
+OpenTelemetry
+
+Trace one operator request through agent → model → MCP tool → payment service, using correlation IDs.
+
+Alerts
+
+Model unavailable, GPU out of memory, inference latency above target, repeated tool failures, and payment reconciliation discrepancies.
+
+Avoid logging full prompts, credentials, account details or other sensitive payment data. Log only the identifiers and evidence needed for debugging and audit.
+
+## Step 10 — Add production-grade delivery and recovery
+
+Once inference works, add the following:
+
+- Terraform: manage EKS changes, GPU node groups, IAM and networking as code.
+- CI/CD: build and scan the MCP image, validate Kubernetes manifests, run tests and deploy through a controlled pipeline.
+- GitOps: use Argo CD or a similar controller to reconcile approved deployment changes.
+- Network controls: permit only authorized agent workloads to access the model API; use Kubernetes NetworkPolicy where supported.
+- Reliability: enforce request deadlines, bounded retries, concurrency limits and graceful handling of model outages.
+- Evaluation: test tool selection, answer correctness, hallucination rate, prompt injection resistance and financial-policy violations.
+
+Keep the payment simulator operational if the model fails. AI should help investigate transactions, not become a dependency for the simulator's deterministic payment processing.
+
+## Step 11 — Benchmark it before calling it production-ready
+
+Build a repeatable test suite and compare model configurations using the same workload.
+
+| Metric            | What to measure                                                             |
+| ----------------- | --------------------------------------------------------------------------- |
+| Inference latency | Time to first token and total response time                                 |
+| Throughput        | Tokens per second and requests per second                                   |
+| GPU efficiency    | GPU utilization, memory usage and idle time                                 |
+| Agent quality     | Correct tool selection and correct interpretation of transaction evidence   |
+| Safety            | Unauthorized tool calls, prompt-injection resistance and unsupported claims |
+| Reliability       | Pod recovery, model restart, timeout behavior and graceful degradation      |
+
+Run load tests at gradually increasing concurrency. Do not add replicas just because Kubernetes supports them: every replica needs enough compute and model memory, and the scheduler must have GPU capacity available.
+
+## Step 12 — Evolve to your original 32B model
+
+After the baseline works, test `Qwen2.5-Coder-32B-Instruct` as a separate deployment revision.
+
+A 32B model needs substantially more memory than the 7B baseline. Quantization reduces weight memory, but you also need GPU memory for runtime overhead and the KV cache. Depending on the serving configuration, you may need multiple GPUs or a larger-memory accelerator. vLLM supports tensor-parallel serving, but the correct configuration must be benchmarked against your actual hardware.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://docs.vllm.ai\&sz=32)
+
+vLLM
+
++1
+
+
+
+Don't switch the working production-like endpoint to 32B until it passes the same functional, latency, resource and safety tests.
+
+## Your implementation checklist
+
+## EKS inference rollout
+
+0/16 complete
+
+Cluster
+
+Inspect existing EKS cluster and AWS costs
+
+Provision a dedicated GPU node group
+
+Verify NVIDIA device support
+
+Model serving
+
+Create inference namespace and persistent model cache
+
+Create API-key Secret
+
+Deploy vLLM and internal ClusterIP Service
+
+Verify model loading and chat completions
+
+Agent integration
+
+Configure agent OpenAI-compatible base URL
+
+Connect the agent to the MCP server
+
+Test read-only payment investigation tools
+
+Enforce authorization and audit logging
+
+Production engineering
+
+Add metrics, logs and distributed traces
+
+Add CI/CD and versioned deployment configuration
+
+Test model outages and pod recovery
+
+Benchmark latency, throughput and safety
+
+Evaluate the 32B model after the baseline passes
+
+Copy checklist
+
+The first action is Step 1, not deploying the model YAML immediately. Confirm your EKS cluster, worker types, GPU availability and storage class first. Then configure the GPU node group and deploy the inference service.
+
+One final reminder: this architecture is the right learning target, but a continuously running EKS GPU workload is not guaranteed to be free. Keep the lab's budget under control, and do not expose the model API publicly without an authenticated gateway and appropriate network restrictions.

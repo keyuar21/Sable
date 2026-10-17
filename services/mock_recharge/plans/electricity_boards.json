@@ -1,0 +1,535 @@
+{
+  "updated_on": "2026-10-08",
+  "note": "Distribution companies and the consumer-number format each one asks for. Bills in this simulator are generated locally \u2014 no board portal is contacted. Real bill fetch goes through BBPS, which requires a licensed biller agent.",
+  "boards": [
+    {
+      "id": "msedcl",
+      "name": "MSEDCL (Mahadiscom)",
+      "state": "Maharashtra",
+      "digits": 12,
+      "label": "Consumer Number",
+      "portal": "https://wss.mahadiscom.in/wss/wss?uiActionName=getViewPayBill&Lang=English",
+      "tariff": {
+        "name": "LT-I Domestic (MERC tariff structure)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.71
+          },
+          {
+            "upto": 300,
+            "rate": 10.29
+          },
+          {
+            "upto": 500,
+            "rate": 14.55
+          },
+          {
+            "upto": null,
+            "rate": 16.64
+          }
+        ],
+        "fixed_charge": 128.0,
+        "wheeling_per_unit": 1.57,
+        "duty_percent": 16.0,
+        "note": "Slab boundaries and the wheeling/duty structure follow MERC's LT-I Domestic order. Rates are revised periodically and the Fuel Adjustment Charge changes monthly, so verify on the MSEDCL bill."
+      }
+    },
+    {
+      "id": "best",
+      "name": "BEST Mumbai",
+      "state": "Maharashtra",
+      "digits": 9,
+      "label": "Consumer Number",
+      "portal": "https://bestundertaking.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "adani",
+      "name": "Adani Electricity Mumbai",
+      "state": "Maharashtra",
+      "digits": 9,
+      "label": "Consumer Number",
+      "portal": "https://www.adanielectricity.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "tata-power",
+      "name": "Tata Power Mumbai",
+      "state": "Maharashtra",
+      "digits": 9,
+      "label": "Consumer Number",
+      "portal": "https://www.tatapower.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "bescom",
+      "name": "BESCOM",
+      "state": "Karnataka",
+      "digits": 10,
+      "label": "Account ID",
+      "portal": "https://bescom.karnataka.gov.in",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "tneb",
+      "name": "TNEB / TANGEDCO",
+      "state": "Tamil Nadu",
+      "digits": 12,
+      "label": "Consumer Number",
+      "portal": "https://www.tnebnet.org",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "tsspdcl",
+      "name": "TSSPDCL",
+      "state": "Telangana",
+      "digits": 11,
+      "label": "Unique Service Number",
+      "portal": "https://tgsouthernpower.org",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "apspdcl",
+      "name": "APSPDCL",
+      "state": "Andhra Pradesh",
+      "digits": 13,
+      "label": "Service Number",
+      "portal": "https://www.apspdcl.in",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "bses-rajdhani",
+      "name": "BSES Rajdhani",
+      "state": "Delhi",
+      "digits": 9,
+      "label": "CA Number",
+      "portal": "https://www.bsesdelhi.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "bses-yamuna",
+      "name": "BSES Yamuna",
+      "state": "Delhi",
+      "digits": 9,
+      "label": "CA Number",
+      "portal": "https://www.bsesdelhi.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "tpddl",
+      "name": "Tata Power Delhi (TPDDL)",
+      "state": "Delhi",
+      "digits": 9,
+      "label": "CA Number",
+      "portal": "https://www.tatapower-ddl.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "pspcl",
+      "name": "PSPCL",
+      "state": "Punjab",
+      "digits": 10,
+      "label": "Account Number",
+      "portal": "https://pspcl.in",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "uppcl",
+      "name": "UPPCL",
+      "state": "Uttar Pradesh",
+      "digits": 10,
+      "label": "Account Number",
+      "portal": "https://www.uppclonline.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "wbsedcl",
+      "name": "WBSEDCL",
+      "state": "West Bengal",
+      "digits": 11,
+      "label": "Consumer ID",
+      "portal": "https://www.wbsedcl.in",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "mgvcl",
+      "name": "MGVCL",
+      "state": "Gujarat",
+      "digits": 11,
+      "label": "Consumer Number",
+      "portal": "https://mgvcl.com",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    },
+    {
+      "id": "kseb",
+      "name": "KSEB",
+      "state": "Kerala",
+      "digits": 13,
+      "label": "Consumer Number",
+      "portal": "https://wss.kseb.in",
+      "tariff": {
+        "name": "Domestic (approximate)",
+        "slabs": [
+          {
+            "upto": 100,
+            "rate": 4.5
+          },
+          {
+            "upto": 300,
+            "rate": 7.5
+          },
+          {
+            "upto": 500,
+            "rate": 9.5
+          },
+          {
+            "upto": null,
+            "rate": 11.5
+          }
+        ],
+        "fixed_charge": 100.0,
+        "wheeling_per_unit": 0.0,
+        "duty_percent": 9.0,
+        "note": "Approximate domestic slabs \u2014 each state commission sets its own tariff."
+      }
+    }
+  ],
+  "tariff_note": "Tariffs live in this file so they can be corrected without a code change. MSEDCL follows the published MERC slab structure; other boards use an approximate domestic tariff."
+}

@@ -1,0 +1,97 @@
+{
+  "updated_on": "2026-10-08",
+  "circles": [
+    {
+      "id": "andhra-pradesh",
+      "name": "Andhra Pradesh & Telangana"
+    },
+    {
+      "id": "assam",
+      "name": "Assam"
+    },
+    {
+      "id": "bihar",
+      "name": "Bihar & Jharkhand"
+    },
+    {
+      "id": "chennai",
+      "name": "Chennai"
+    },
+    {
+      "id": "delhi",
+      "name": "Delhi NCR"
+    },
+    {
+      "id": "gujarat",
+      "name": "Gujarat"
+    },
+    {
+      "id": "haryana",
+      "name": "Haryana"
+    },
+    {
+      "id": "himachal",
+      "name": "Himachal Pradesh"
+    },
+    {
+      "id": "jammu-kashmir",
+      "name": "Jammu & Kashmir"
+    },
+    {
+      "id": "karnataka",
+      "name": "Karnataka"
+    },
+    {
+      "id": "kerala",
+      "name": "Kerala"
+    },
+    {
+      "id": "kolkata",
+      "name": "Kolkata"
+    },
+    {
+      "id": "madhya-pradesh",
+      "name": "Madhya Pradesh & Chhattisgarh"
+    },
+    {
+      "id": "maharashtra",
+      "name": "Maharashtra & Goa"
+    },
+    {
+      "id": "mumbai",
+      "name": "Mumbai"
+    },
+    {
+      "id": "north-east",
+      "name": "North East"
+    },
+    {
+      "id": "odisha",
+      "name": "Odisha"
+    },
+    {
+      "id": "punjab",
+      "name": "Punjab"
+    },
+    {
+      "id": "rajasthan",
+      "name": "Rajasthan"
+    },
+    {
+      "id": "tamil-nadu",
+      "name": "Tamil Nadu"
+    },
+    {
+      "id": "up-east",
+      "name": "Uttar Pradesh (East)"
+    },
+    {
+      "id": "up-west",
+      "name": "Uttar Pradesh (West)"
+    },
+    {
+      "id": "west-bengal",
+      "name": "West Bengal"
+    }
+  ]
+}

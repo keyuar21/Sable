@@ -1,0 +1,202 @@
+{
+  "operator": "airtel",
+  "name": "Airtel",
+  "colour": "#e40000",
+  "updated_on": "2026-10-08",
+  "source": "https://www.airtel.in/recharge-online/",
+  "note": "Representative Indian prepaid pricing, captured as a dated snapshot. Operators change tariffs often and run circle-specific offers, so confirm against the operator before relying on a price.",
+  "national": [
+    {
+      "id": "air-19",
+      "price": 19,
+      "validity_days": 1,
+      "data": "1 GB",
+      "category": "topup",
+      "calls": "\u2014",
+      "sms": "\u2014",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "air-49",
+      "price": 49,
+      "validity_days": 1,
+      "data": "\u2014",
+      "category": "topup",
+      "calls": "\u20b938 talktime",
+      "sms": "\u2014",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "air-99",
+      "price": 99,
+      "validity_days": 28,
+      "data": "200 MB total",
+      "category": "validity",
+      "calls": "\u20b999 talktime",
+      "sms": "\u2014",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "air-179",
+      "price": 179,
+      "validity_days": 28,
+      "data": "2 GB total",
+      "category": "validity",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [],
+      "popular": false
+    },
+    {
+      "id": "air-209",
+      "price": 209,
+      "validity_days": 28,
+      "data": "1 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-265",
+      "price": 265,
+      "validity_days": 28,
+      "data": "1 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream",
+        "Wynk"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-299",
+      "price": 299,
+      "validity_days": 28,
+      "data": "1.5 GB/day",
+      "category": "popular",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream",
+        "Wynk"
+      ],
+      "popular": true
+    },
+    {
+      "id": "air-349",
+      "price": 349,
+      "validity_days": 28,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream",
+        "Wynk"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-399",
+      "price": 399,
+      "validity_days": 28,
+      "data": "2.5 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-479",
+      "price": 479,
+      "validity_days": 56,
+      "data": "1.5 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Wynk Music"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-579",
+      "price": 579,
+      "validity_days": 56,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-779",
+      "price": 779,
+      "validity_days": 84,
+      "data": "1.5 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Wynk Music"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-979",
+      "price": 979,
+      "validity_days": 84,
+      "data": "2 GB/day",
+      "category": "unlimited",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-1799",
+      "price": 1799,
+      "validity_days": 180,
+      "data": "2 GB/day",
+      "category": "annual",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream"
+      ],
+      "popular": false
+    },
+    {
+      "id": "air-3599",
+      "price": 3599,
+      "validity_days": 365,
+      "data": "2 GB/day",
+      "category": "annual",
+      "calls": "Unlimited",
+      "sms": "100/day",
+      "extras": [
+        "Airtel Xstream",
+        "Wynk"
+      ],
+      "popular": false
+    }
+  ],
+  "circle_overrides": {}
+}
