@@ -5,7 +5,12 @@
 
 'use strict';
 
-const VOICE_AUTH_API = 'http://localhost:5005';
+// Same runtime-config contract as app.js: the URL comes from
+// window.__UPI_CONFIG__ (rendered from the Helm ConfigMap). The fallback is the
+// Ingress URL the browser can reach — not localhost, and not the in-cluster
+// Service DNS (upi-auth:5005), neither of which the browser can resolve.
+const RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
+const VOICE_AUTH_API = RUNTIME.auth || 'https://api.upi-sim.local/auth';
 
 const ENROLL_BASE_PHRASE = 'My voice is my key';
 // Kept for backward-compat with app.js updateEnrollUI until challenge phrase is set
@@ -47,7 +52,7 @@ function isNegativeSpeech(text) {
 let _cachedCuteVoice = null;
 let _voicesReady = false;
 let _assistantAudio = null;
-const LOCAL_TTS_API = 'http://localhost:5001/assistant/voice';
+const LOCAL_TTS_API = `${RUNTIME.psp || 'https://api.upi-sim.local/psp'}/assistant/voice`;
 
 function _pickCuteGirlVoice() {
   if (_cachedCuteVoice) return _cachedCuteVoice;

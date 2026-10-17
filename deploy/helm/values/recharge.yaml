@@ -52,3 +52,20 @@ persistence:
 resources:
   requests: { cpu: 50m, memory: 128Mi }
   limits:   { memory: 256Mi }
+
+ingress:
+  enabled: true
+  className: nginx
+  # Published as api.upi-sim.local/recharge; the rewrite strips the prefix.
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts:
+    - host: api.upi-sim.local
+      paths:
+        - path: /recharge(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - api.upi-sim.local
+      secretName: upi-sim-tls

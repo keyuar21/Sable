@@ -134,6 +134,47 @@ make lint template      # check without a cluster
 Order matters on first install: `switch` and `auth` come up before the banks,
 and `psp` after them, so readiness probes pass on the first try.
 
+## Ingress and the local kind cluster
+
+Each release can publish itself through the chart's `templates/ingress.yaml`.
+The API services share one host and live under a path prefix that is stripped
+before the request reaches the pod (rewrite-target `/psp/initiate -> /initiate`):
+
+| Host | Path | Backend |
+|---|---|---|
+| `upi-sim.local` | `/` | `upi-frontend:8080` |
+| `api.upi-sim.local` | `/psp` | `upi-psp:5001` |
+| | `/switch` | `upi-switch:5002` |
+| | `/payer` | `upi-payer-bank:5003` |
+| | `/payee` | `upi-payee-bank:5004` |
+| | `/auth` | `upi-auth:5005` |
+| | `/recharge` | `upi-recharge:5007` |
+
+`frontend/config.js` is written against exactly these URLs (the `extraFiles`
+block in `values/frontend.yaml`). The ops console deliberately has no ingress.
+
+The services are served over **https** with a self-signed cert (`upi-sim-tls`).
+That is not decoration: Voice ID records through `getUserMedia`, and browsers
+only expose the microphone on a secure context — `http://upi-sim.local` is not
+one. Your browser will warn once per host on first visit.
+
+`deploy/helm/kind-up.sh` brings the whole stack up on a local kind cluster —
+cluster (with 80/443 published and the node labelled `ingress-ready=true`, see
+`kind-config.yaml`), image builds, `kind load`, ingress-nginx, the secrets and
+the TLS cert, and all eight releases:
+
+```bash
+deploy/helm/kind-up.sh
+```
+
+It prints the one host entry you must add yourself:
+
+```bash
+echo '127.0.0.1 upi-sim.local api.upi-sim.local' | sudo tee -a /etc/hosts
+```
+
+Then open <https://upi-sim.local>.
+
 ## Still to do before this runs for real
 
 Written to be kept, not yet deployed. Two things still need code changes:

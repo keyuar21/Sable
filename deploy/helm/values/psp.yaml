@@ -12,6 +12,11 @@ service:
 
 replicaCount: 1   # settlement and recon are singleton timers — see note below
 
+env:
+  SWITCH_URL: http://upi-switch:5002
+  PAYER_BANK_URL: http://upi-payer-bank:5003
+  PAYEE_BANK_URL: http://upi-payee-bank:5004
+
 app:
   config:
     service: psp
@@ -41,3 +46,22 @@ resources:
   requests: { cpu: 100m, memory: 256Mi }
   limits:   { memory: 768Mi }
 
+ingress:
+  enabled: true
+  className: nginx
+  # app.js calls `${API.psp}/initiate`, `${API.psp}/transactions`, ... so the
+  # service is published under a path prefix that the rewrite strips before the
+  # request reaches the pod:
+  #   /psp/initiate  ->  /initiate
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts:
+    - host: api.upi-sim.local
+      paths:
+        - path: /psp(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - api.upi-sim.local
+      secretName: upi-sim-tls

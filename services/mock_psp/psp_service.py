@@ -31,9 +31,9 @@ app.add_middleware(
 )
 
 # ---------- Service URLs ----------
-SWITCH_URL      = "http://localhost:5002"
-PAYER_BANK_URL  = "http://localhost:5003"
-PAYEE_BANK_URL  = "http://localhost:5004"
+SWITCH_URL      = os.environ.get("SWITCH_URL", "http://localhost:5002")
+PAYER_BANK_URL  = os.environ.get("PAYER_BANK_URL", "http://localhost:5003")
+PAYEE_BANK_URL  = os.environ.get("PAYEE_BANK_URL", "http://localhost:5004")
 
 MAX_DAILY_LIMIT = 100_000   # ₹1 lakh/day (real UPI rule)
 SETTLEMENT_INTERVAL_SECS = 30  # Every 30s in demo (real: multiple times/day)

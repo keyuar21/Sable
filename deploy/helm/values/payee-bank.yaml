@@ -10,6 +10,9 @@ service:
 
 replicaCount: 1   # ReadWriteOnce volume: exactly one writer
 
+env:
+  PAYEE_DB_PATH: /data/payee_ledger.db
+
 app:
   config:
     service: payee-bank
@@ -36,3 +39,21 @@ existingSecret: upi-supabase
 resources:
   requests: { cpu: 100m, memory: 192Mi }
   limits:   { memory: 512Mi }
+
+ingress:
+  enabled: true
+  className: nginx
+  # Published as api.upi-sim.local/payee; the rewrite strips the prefix so the
+  # pod still sees its own paths.
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts:
+    - host: api.upi-sim.local
+      paths:
+        - path: /payee(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - api.upi-sim.local
+      secretName: upi-sim-tls

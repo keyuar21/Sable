@@ -5,17 +5,18 @@
 'use strict';
 
 // ── API base URLs ─────────────────────────────────────────────────────────────
-// Read from config.js, which is mounted from the Helm ConfigMap in a container
-// and ships with localhost defaults for local development. Falling back per key
-// means a partial config still works.
+// Read from config.js, which is mounted from the Helm ConfigMap in a container.
+// Falling back per key means a partial config still works. The fallbacks are the
+// Ingress URLs — what the browser can actually reach. They are NOT the in-cluster
+// Service DNS (upi-auth:5005), which only resolves inside the cluster.
 const RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
 const API = {
-  psp:       RUNTIME.psp       || 'http://localhost:5001',
-  switch:    RUNTIME.switch    || 'http://localhost:5002',
-  payerBank: RUNTIME.payerBank || 'http://localhost:5003',
-  payeeBank: RUNTIME.payeeBank || 'http://localhost:5004',
-  auth:      RUNTIME.auth      || 'http://localhost:5005',
-  recharge:  RUNTIME.recharge  || 'http://localhost:5007',
+  psp:       RUNTIME.psp       || 'https://api.upi-sim.local/psp',
+  switch:    RUNTIME.switch    || 'https://api.upi-sim.local/switch',
+  payerBank: RUNTIME.payerBank || 'https://api.upi-sim.local/payer',
+  payeeBank: RUNTIME.payeeBank || 'https://api.upi-sim.local/payee',
+  auth:      RUNTIME.auth      || 'https://api.upi-sim.local/auth',
+  recharge:  RUNTIME.recharge  || 'https://api.upi-sim.local/recharge',
 };
 
 // ── App state ─────────────────────────────────────────────────────────────────

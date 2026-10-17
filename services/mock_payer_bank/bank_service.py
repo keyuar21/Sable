@@ -20,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "payer_ledger.db")
+DB_PATH = os.environ.get("PAYER_DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "payer_ledger.db"))
 BANK_CODE = "MOCKBANK"          # this service is one bank institution
 CORRECT_PIN = "1234"  # legacy fallback only — real PIN verification now lives in mock_auth (hashed)
 AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:5005")

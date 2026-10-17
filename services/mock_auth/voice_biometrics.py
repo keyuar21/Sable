@@ -73,7 +73,7 @@ MODELS_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "models")
 )
 AASIST_ONNX = os.path.join(MODELS_DIR, "aasist.onnx")
-DB_PATH = os.path.join(os.path.dirname(__file__), "voice_biometrics.db")
+DB_PATH = os.environ.get("VOICE_BIOMETRICS_DB_PATH", os.path.join(os.path.dirname(__file__), "voice_biometrics.db"))
 
 _encoder = None
 _ort_session = None

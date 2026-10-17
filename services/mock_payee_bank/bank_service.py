@@ -20,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "payee_ledger.db")
+DB_PATH = os.environ.get("PAYEE_DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "payee_ledger.db"))
 BANK_CODE = "MOCKBANK2"         # the beneficiary bank institution
 
 

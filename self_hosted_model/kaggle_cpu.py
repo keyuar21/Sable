@@ -1,624 +1,664 @@
-# ==========================================================================
-# ONE-SHOT (CPU ONLY): Qwen2.5-3B-Instruct on a Kaggle / any Linux CPU notebook
-# served through an OpenAI-compatible API, behind your Cloudflare Worker.
+# ============================================================================
+# FINAL ONE-SHOT Kaggle CPU LLM + Cloudflare Worker gateway
+# Paste this entire file into ONE Kaggle notebook code cell and run it.
+# Kaggle settings: Accelerator=None (CPU), Internet=ON.
 #
-# Paste this whole file into ONE cell of a fresh notebook and run it.
-# Settings: Accelerator = "None" (CPU), Internet = ON.
+# This setup uses the tested CPU llama-cpp-python server (no GPU required).
+# It downloads Qwen2.5-3B-Instruct Q4_K_M if not already complete, starts a
+# local API-key proxy and Cloudflare quick tunnel, registers the tunnel with
+# the existing Worker, then requires BOTH end-to-end tests to pass.
 #
-# Why this differs from the GPU script: the vLLM wheel and the sharded model used
-# there are built for Tesla T4 GPUs only and cannot run on a CPU. This script uses
-# llama.cpp (llama-server) with the official 4-bit GGUF of the SAME model family
-# (Qwen/Qwen2.5-3B-Instruct). Everything after the server is identical: same auth
-# proxy (port 8002), same Cloudflare quick tunnel, same Worker registration, same
-# model name "qwen2.5-3b-kaggle-t4x2" - so your apps and Worker need no changes.
-#
-# What it does:
-#   1. Downloads the prebuilt llama.cpp CPU server (falls back to the
-#      llama-cpp-python package if the prebuilt binary cannot be used).
-#   2. Downloads the Qwen2.5-3B-Instruct Q4_K_M GGUF (~2.1 GB) from Hugging Face.
-#   3. Starts the server in the BACKGROUND (the cell finishes, the server keeps
-#      running) and sends a test chat request.
-#   4. Starts the API-key proxy + Cloudflare quick tunnel, registers the tunnel
-#      URL with your Worker, tests the gateway and prints URL + key at the end.
-#
-# First run takes roughly 5-10 minutes. Re-running in the same session is safe:
-# finished steps are skipped and a running server is reused.
-# Expect roughly 3-8 tokens/second on a 4-core Kaggle CPU (slower than the GPUs).
-# ==========================================================================
-import os, sys, re, json, time, shutil, subprocess, tarfile, zipfile, urllib.request, urllib.error
+# The existing hardcoded Worker credentials and model alias are retained for
+# this initial test. They are not printed in output; do not publish this file.
+# CPU generation can be slow; long prompts may still exceed the context window.
+# ============================================================================
 
-# ---------------------------- configuration -------------------------------
-WORK = "/tmp/llama-cpu"
-BIN_DIR = f"{WORK}/llama.cpp"
-MODEL_DIR = f"{WORK}/model"
-LOG = f"{WORK}/llama_server.log"
+import os
+import sys
+import re
+import json
+import time
+import shutil
+import signal
+import subprocess
+import urllib.request
+import urllib.error
+from pathlib import Path
+
+# ---------------------------- hardcoded config -------------------------------
+WORK = Path("/tmp/llama-cpu")
+BIN_DIR = WORK / "llama.cpp"
+MODEL_DIR = WORK / "model"
+MODEL_FILE = MODEL_DIR / "qwen2.5-3b-instruct-q4_k_m.gguf"
+MODEL_URL = (
+    "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/"
+    "qwen2.5-3b-instruct-q4_k_m.gguf"
+)
+MODEL_MIN_BYTES = 1_800_000_000
 
 PORT = 8001
 BASE = f"http://127.0.0.1:{PORT}"
-SERVED_NAME = "qwen2.5-3b-kaggle-t4x2"   # kept identical so the Worker/apps need no change
-
-MODEL_URL = ("https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/"
-             "qwen2.5-3b-instruct-q4_k_m.gguf")
-MODEL_FILE = f"{MODEL_DIR}/qwen2.5-3b-instruct-q4_k_m.gguf"
-MODEL_MIN_BYTES = 1_800_000_000          # file is ~2.1 GB; smaller = incomplete download
-
-CTX = 4096                                # context window (prompt + answer)
-THREADS = max(1, os.cpu_count() or 4)
-
+SERVED_NAME = "qwen2.5-3b-kaggle-t4x2"  # preserve existing client model name
+CTX = 8192  # allow the 7k-token prompt seen in your logs, plus room for the answer
+THREADS = max(1, min(4, os.cpu_count() or 4))
 LLAMA_REPO = "ggml-org/llama.cpp"
 
-# ------------------------------- helpers ----------------------------------
-def log(msg):
-    print(f"\n=== {msg}", flush=True)
+PROXY_PORT = 8002
+PROXY_BASE = f"http://127.0.0.1:{PROXY_PORT}"
+KEY_FILE = WORK / ".api_key"
+PROXY_PY = WORK / "auth_proxy.py"
+PROXY_LOG = WORK / "auth_proxy.log"
+MODEL_LOG = WORK / "llama_server.log"
+CF_BIN = WORK / "cloudflared"
+CF_LOG = WORK / "cloudflared.log"
+CF_DOWNLOAD = (
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/"
+    "cloudflared-linux-amd64"
+)
+WORKER_URL = "https://ai-builder.keyaurbhlonde.workers.dev"
 
-def run(cmd, **kw):
-    print("$ " + " ".join(str(c) for c in cmd)[:220], flush=True)
-    subprocess.run(cmd, check=True, **kw)
+# Keeping the exact values from your current notebook for now, as requested.
+# They must match the Worker secrets API_KEY and REGISTER_TOKEN.
+API_KEY = "srkxOGWqn454X4GtmzxMtdOJHpLe8t_KV6KFvmXnLvE"
+REGISTER_TOKEN = "KqQYN-RpPqUAkowK1zvUcGsbDzwKqN1HnA-X9wT6DCk"
 
-def api_get(path, data=None, timeout=5):
-    req = urllib.request.Request(
-        f"{BASE}{path}",
-        data=json.dumps(data).encode() if data is not None else None,
-        headers={"Content-Type": "application/json"} if data is not None else {},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+# -------------------------------- helpers ------------------------------------
+def log(message):
+    print(f"\n=== {message}", flush=True)
 
-def server_up():
+
+def tail(path, lines=60):
     try:
-        api_get("/v1/models", timeout=3)
-        return True
+        return "".join(Path(path).read_text(errors="replace").splitlines(True)[-lines:])
     except Exception:
-        return False
+        return "(log unavailable)"
 
-def tail(path, n=60):
+
+def run(cmd, **kwargs):
+    print("$ " + " ".join(map(str, cmd))[:260], flush=True)
+    subprocess.run(cmd, check=True, **kwargs)
+
+
+def http_json(url, data=None, headers=None, timeout=30):
+    # Use an explicit application User-Agent. The default urllib User-Agent was
+    # blocked by Cloudflare Error 1010 in the streaming test.
+    hdrs = {"User-Agent": "qwen-kaggle-client/1.0"}
+    hdrs.update(headers or {})
+    payload = None if data is None else json.dumps(data, ensure_ascii=False).encode("utf-8")
+    if payload is not None:
+        hdrs.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(url, data=payload, headers=hdrs)
     try:
-        with open(path) as f:
-            return "".join(f.readlines()[-n:])
-    except Exception:
-        return "(no log)"
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status, response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", errors="replace")
 
-def curl_get(url, out, tries=4):
-    """Download with resume + retries; returns True on exit code 0."""
-    for _ in range(tries):
-        r = subprocess.run(["curl", "-fL", "--retry", "5", "--retry-delay", "3",
-                            "-C", "-", "-o", out, url])
-        if r.returncode == 0:
-            return True
-        if r.returncode == 33:      # range not supported -> restart from scratch
-            try:
-                os.remove(out)
-            except OSError:
-                pass
+
+def wait_for(check, seconds=60, interval=2):
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        try:
+            if check():
+                return True
+        except Exception:
+            pass
+        time.sleep(interval)
     return False
 
-# --------------------------- 0. preflight ---------------------------------
-log("0/9 Preflight (internet + disk + CPU)")
-os.makedirs(WORK, exist_ok=True)
-print(f"CPU threads: {THREADS}")
-free_gb = shutil.disk_usage(WORK).free / 1e9
-print(f"Free disk in {WORK}: {free_gb:.1f} GB")
-if free_gb < 6:
-    raise RuntimeError("Less than 6 GB free disk space; the model + server need about 4 GB.")
-try:
-    urllib.request.urlopen("https://huggingface.co", timeout=15)
-    urllib.request.urlopen("https://github.com", timeout=15)
-except Exception as e:
-    raise RuntimeError("No internet (or GitHub/Hugging Face blocked). Turn on "
-                       "Settings -> Internet and restart the session.") from e
 
-already_serving = server_up()
-if already_serving:
-    print("A model server is already answering on", BASE, "- skipping install and launch.")
-
-# ----------------------- 1-3. llama.cpp server binary ---------------------
-def pick_asset(assets):
-    """Choose the plain Ubuntu x64 CPU build (not vulkan/rocm/cuda/openvino/etc)."""
-    for a in assets:
-        if re.search(r"bin-ubuntu-x64\.(zip|tar\.gz)$", a["name"]):
-            return a
-    bad = ("vulkan", "rocm", "cuda", "sycl", "openvino", "arm", "s390x", "hip", "musa")
-    for a in assets:
-        n = a["name"].lower()
-        if "ubuntu" in n and "x64" in n and n.endswith((".zip", ".tar.gz")) \
-                and not any(b in n for b in bad):
-            return a
-    return None
-
-def candidate_urls():
-    """Download URLs for the latest llama.cpp CPU build: GitHub API first, then guess from the tag."""
-    urls = []
+def get_models():
     try:
-        req = urllib.request.Request(
-            f"https://api.github.com/repos/{LLAMA_REPO}/releases/latest",
-            headers={"User-Agent": "kaggle-cpu-oneshot/1.0", "Accept": "application/vnd.github+json"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            rel = json.loads(r.read())
-        a = pick_asset(rel.get("assets", []))
-        if a:
-            print("Latest llama.cpp release:", rel.get("tag_name"), "->", a["name"])
-            urls.append((a["name"], a["browser_download_url"]))
-    except Exception as e:
-        print("GitHub API unavailable (", type(e).__name__, ") - trying release page instead.")
-    if not urls:
-        r = subprocess.run(["curl", "-sIL", "-o", "/dev/null", "-w", "%{url_effective}",
-                            f"https://github.com/{LLAMA_REPO}/releases/latest"],
-                           capture_output=True, text=True)
-        m = re.search(r"/tag/([^/\s]+)$", r.stdout.strip())
-        if m:
-            tag = m.group(1)
-            print("Latest llama.cpp tag:", tag)
-            for ext in ("zip", "tar.gz"):
-                name = f"llama-{tag}-bin-ubuntu-x64.{ext}"
-                urls.append((name, f"https://github.com/{LLAMA_REPO}/releases/download/{tag}/{name}"))
-    return urls
+        status, body = http_json(f"{BASE}/v1/models", timeout=3)
+        if status != 200:
+            return []
+        payload = json.loads(body)
+        return [str(item.get("id", "")) for item in payload.get("data", [])]
+    except Exception:
+        return []
 
-def find_server_binary(root):
-    for d, _dirs, files in os.walk(root):
-        if "llama-server" in files:
-            return os.path.join(d, "llama-server")
-    return None
+
+def server_up_with_expected_model():
+    return SERVED_NAME in get_models()
+
 
 def lib_env(binary):
     env = dict(os.environ)
-    d = os.path.dirname(binary)
-    env["LD_LIBRARY_PATH"] = d + ":" + env.get("LD_LIBRARY_PATH", "")
-    env["CUDA_VISIBLE_DEVICES"] = ""          # CPU only
+    env["LD_LIBRARY_PATH"] = str(Path(binary).parent) + ":" + env.get("LD_LIBRARY_PATH", "")
+    env["CUDA_VISIBLE_DEVICES"] = ""
     return env
 
-def extract(archive, dest):
-    shutil.rmtree(dest, ignore_errors=True)
-    os.makedirs(dest, exist_ok=True)
-    if archive.endswith(".zip"):
-        with zipfile.ZipFile(archive) as z:
-            z.extractall(dest)
-    else:
-        with tarfile.open(archive) as t:
-            try:
-                t.extractall(dest, filter="data")
-            except TypeError:                 # Python < 3.12 has no extraction filters
-                t.extractall(dest)
 
-def install_llama_cpp_binary():
-    """Returns the llama-server path, or None if no usable prebuilt binary could be set up."""
-    existing = find_server_binary(BIN_DIR) if os.path.isdir(BIN_DIR) else None
-    if existing:
-        ok = subprocess.run([existing, "--version"], capture_output=True, env=lib_env(existing))
-        if ok.returncode == 0:
-            print("llama-server already present:", existing)
-            return existing
-    for name, url in candidate_urls():
-        archive = f"{WORK}/{name}"
-        print("Downloading", url)
-        if not curl_get(url, archive, tries=3):
-            print("  download failed, trying next candidate")
+def curl_download(url, output, tries=5):
+    output = str(output)
+    for attempt in range(1, tries + 1):
+        cmd = [
+            "curl", "-fL", "--connect-timeout", "20", "--retry", "3",
+            "--retry-delay", "2", "-C", "-", "-o", output, url,
+        ]
+        result = subprocess.run(cmd)
+        if result.returncode == 0:
+            return True
+        if result.returncode == 33:  # server refused resume; retry from scratch
+            try:
+                os.remove(output)
+            except OSError:
+                pass
+        print(f"Download attempt {attempt}/{tries} failed (curl exit {result.returncode}).", flush=True)
+        time.sleep(min(attempt * 2, 8))
+    return False
+
+
+def proc_cmdlines():
+    """Yield (pid, argv text) for accessible processes, without matching this cell itself."""
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
             continue
         try:
-            extract(archive, BIN_DIR)
-        except Exception as e:
-            print("  could not extract:", e)
+            raw = (entry / "cmdline").read_bytes()
+            if raw:
+                yield int(entry.name), raw.replace(b"\0", b" ").decode(errors="ignore")
+        except (OSError, PermissionError):
             continue
-        binary = find_server_binary(BIN_DIR)
-        if not binary:
-            print("  llama-server not found inside the archive")
-            continue
-        os.chmod(binary, 0o755)
-        for f in os.listdir(os.path.dirname(binary)):      # make bundled tools executable
-            p = os.path.join(os.path.dirname(binary), f)
-            if os.path.isfile(p) and not f.endswith((".so", ".txt", ".md")) and ".so" not in f:
-                try:
-                    os.chmod(p, 0o755)
-                except OSError:
-                    pass
-        t = subprocess.run([binary, "--version"], capture_output=True, text=True,
-                           env=lib_env(binary))
-        print((t.stdout + t.stderr).strip().splitlines()[-1:] or "")
-        if t.returncode == 0:
-            return binary
-        print("  binary does not run on this machine:", (t.stderr or t.stdout)[-300:])
-    return None
 
-SERVER_KIND = None      # "binary" or "python"
-SERVER_BIN = None
 
-def install_python_fallback():
-    log("llama.cpp binary unavailable - falling back to the llama-cpp-python package")
-    run([sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check",
-         "llama-cpp-python[server]",
-         "--extra-index-url", "https://abetlen.github.io/llama-cpp-python/whl/cpu"])
-    run([sys.executable, "-c", "import llama_cpp; print('llama_cpp', llama_cpp.__version__)"])
+def stop_processes(predicate, wait_seconds=8):
+    """Safely stop only processes whose actual /proc command line matches predicate."""
+    pids = [pid for pid, cmd in proc_cmdlines() if predicate(cmd)]
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    deadline = time.time() + wait_seconds
+    while time.time() < deadline:
+        alive = []
+        for pid in pids:
+            try:
+                os.kill(pid, 0)
+                alive.append(pid)
+            except (ProcessLookupError, PermissionError):
+                pass
+        if not alive:
+            return
+        time.sleep(0.5)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
-if not already_serving:
-    log("1/9 llama.cpp CPU server")
-    SERVER_BIN = install_llama_cpp_binary()
-    if SERVER_BIN:
-        SERVER_KIND = "binary"
-        print("Using prebuilt llama-server:", SERVER_BIN)
-    else:
-        install_python_fallback()
-        SERVER_KIND = "python"
 
-# --------------------------- 2. model download ----------------------------
-def model_ok():
+def terminate_old_model_servers():
+    # Restrict cleanup to llama processes associated with this model/port, not unrelated jobs.
+    def is_ours(cmd):
+        is_llama = "llama-server" in cmd or "llama_cpp.server" in cmd
+        is_our_model = str(MODEL_FILE) in cmd or str(WORK) in cmd
+        is_our_port = re.search(r"(?:--port\s+|--port=)8001(?:\s|$)", cmd) is not None
+        return is_llama and (is_our_model or is_our_port)
+    stop_processes(is_ours)
+    time.sleep(1)
+
+
+def model_file_ok():
     try:
-        if os.path.getsize(MODEL_FILE) < MODEL_MIN_BYTES:
+        if MODEL_FILE.stat().st_size < MODEL_MIN_BYTES:
             return False
-        with open(MODEL_FILE, "rb") as f:
-            return f.read(4) == b"GGUF"
+        with MODEL_FILE.open("rb") as model:
+            return model.read(4) == b"GGUF"
     except OSError:
         return False
 
-if not already_serving:
-    log("2/9 Model download (Qwen2.5-3B-Instruct Q4_K_M, ~2.1 GB)")
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    if model_ok():
-        print("Model already present:", MODEL_FILE)
-    else:
-        if not curl_get(MODEL_URL, MODEL_FILE, tries=5) or not model_ok():
-            raise RuntimeError("Model download failed or is incomplete. Check the internet "
-                               "setting and re-run; the download resumes where it stopped.")
-    print(f"Model OK: {os.path.getsize(MODEL_FILE) / 1e9:.2f} GB")
 
-# ------------------------- 3. launch + test -------------------------------
-def build_cmd():
-    if SERVER_KIND == "binary":
-        return [SERVER_BIN, "-m", MODEL_FILE, "--alias", SERVED_NAME,
-                "--host", "127.0.0.1", "--port", str(PORT),
-                "-c", str(CTX), "-t", str(THREADS), "--parallel", "1"]
-    return [sys.executable, "-m", "llama_cpp.server", "--model", MODEL_FILE,
-            "--model_alias", SERVED_NAME, "--host", "127.0.0.1", "--port", str(PORT),
-            "--n_ctx", str(CTX), "--n_threads", str(THREADS)]
+# -------------------------- 0. preflight ------------------------------------
+log("0/9 Preflight: internet, disk and CPU")
+WORK.mkdir(parents=True, exist_ok=True)
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
+print("CPU threads:", THREADS)
+free_gb = shutil.disk_usage(WORK).free / 1e9
+print(f"Free disk in {WORK}: {free_gb:.1f} GB")
+if free_gb < 6:
+    raise RuntimeError("Less than 6 GB free disk space; model and runtime need about 4 GB.")
+try:
+    urllib.request.urlopen("https://huggingface.co", timeout=15).close()
+    urllib.request.urlopen("https://github.com", timeout=15).close()
+except Exception as exc:
+    raise RuntimeError("Internet check failed. Enable Kaggle Internet and restart the session.") from exc
 
-def launch_server():
-    subprocess.run(["pkill", "-f", "llama-server"], capture_output=True)
-    subprocess.run(["pkill", "-f", "llama_cpp.server"], capture_output=True)
-    time.sleep(2)
-    env = lib_env(SERVER_BIN) if SERVER_KIND == "binary" else dict(os.environ, CUDA_VISIBLE_DEVICES="")
-    cmd = build_cmd()
-    print("$ " + " ".join(cmd))
-    with open(LOG, "w") as lf:
-        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=lf,
-                                stderr=subprocess.STDOUT, env=env, start_new_session=True)
-    print(f"Model server started in the background (PID {proc.pid}). Log: {LOG}")
-    return proc
+# -------------------------- 1-3. model server -------------------------------
+log("1/9 Check model server")
+models = get_models()
+if models:
+    print("Existing model server detected:", models)
+else:
+    print("No responding local model server detected.")
+print("Restarting only this setup's previous model server to apply the configured context size.")
+terminate_old_model_servers()
 
-log("3/9 Starting the server and testing it")
-if not already_serving:
-    proc = launch_server()
-    deadline = time.time() + 10 * 60
-    while time.time() < deadline:
-        if server_up():
-            break
-        if proc.poll() is not None:
-            print(tail(LOG, 80))
-            raise RuntimeError("The model server exited during startup. Last log lines are "
-                               "above - send me the first error in them.")
-        time.sleep(3)
-    else:
-        print(tail(LOG, 80))
-        raise RuntimeError("The model server did not become ready within 10 minutes.")
+log("2/9 Install/check llama-cpp-python CPU server")
+# This CPU wheel path was verified in the current Kaggle environment and
+# avoids the stale GitHub release asset URLs that returned 404 previously.
+run([
+    sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check",
+    "llama-cpp-python[server]", "--extra-index-url",
+    "https://abetlen.github.io/llama-cpp-python/whl/cpu",
+])
+run([sys.executable, "-c", "import llama_cpp; print('llama_cpp', llama_cpp.__version__)"])
 
-print("API READY:", [m["id"] for m in api_get("/v1/models")["data"]])
+log("3/9 Download/check Qwen2.5-3B-Instruct Q4_K_M")
+if model_file_ok():
+    print(f"Model file OK ({MODEL_FILE.stat().st_size / 1e9:.2f} GB):", MODEL_FILE)
+else:
+    print("Downloading model (~2.1 GB); curl will resume an interrupted download.")
+    if not curl_download(MODEL_URL, MODEL_FILE, tries=5) or not model_file_ok():
+        raise RuntimeError("Model download is incomplete. Check Kaggle Internet and rerun this cell.")
+    print(f"Model download verified ({MODEL_FILE.stat().st_size / 1e9:.2f} GB).")
 
-def chat(prompt, max_tokens=200, temperature=0.2):
-    """Ask the local model something: chat('your question')"""
-    res = api_get("/v1/chat/completions", timeout=300, data={
+log("4/9 Launch model server")
+server_cmd = [
+    sys.executable, "-m", "llama_cpp.server", "--model", str(MODEL_FILE),
+    "--model_alias", SERVED_NAME, "--host", "127.0.0.1", "--port", str(PORT),
+    "--n_ctx", str(CTX), "--n_threads", str(THREADS),
+]
+server_env = dict(os.environ, CUDA_VISIBLE_DEVICES="")
+
+with MODEL_LOG.open("w", encoding="utf-8") as log_file:
+    proc = subprocess.Popen(
+        server_cmd, stdin=subprocess.DEVNULL, stdout=log_file,
+        stderr=subprocess.STDOUT, env=server_env, start_new_session=True,
+    )
+print("Model server PID:", proc.pid, "| log:", MODEL_LOG)
+
+if not wait_for(server_up_with_expected_model, seconds=600, interval=3):
+    if proc.poll() is not None:
+        print(tail(MODEL_LOG, 100))
+        raise RuntimeError("The model server exited before it became ready; see log above.")
+    print(tail(MODEL_LOG, 100))
+    raise RuntimeError("Model server did not become ready in 10 minutes; see log above.")
+
+print("API READY:", get_models())
+
+# Local non-stream test before touching Cloudflare.
+log("5/9 Local model smoke test")
+local_status, local_body = http_json(
+    f"{BASE}/v1/chat/completions",
+    data={
         "model": SERVED_NAME,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens, "temperature": temperature})
-    return res["choices"][0]["message"]["content"]
+        "messages": [{"role": "user", "content": "Explain Kubernetes in two simple sentences."}],
+        "max_tokens": 80,
+        "temperature": 0.2,
+        "stream": False,
+    },
+    timeout=240,
+)
+if local_status != 200:
+    raise RuntimeError(f"Local model test failed: HTTP {local_status}: {local_body[:1000]}\n{tail(MODEL_LOG, 40)}")
+try:
+    local_answer = json.loads(local_body)["choices"][0]["message"]["content"]
+except Exception as exc:
+    raise RuntimeError(f"Local model returned invalid JSON: {local_body[:1000]}") from exc
+if not isinstance(local_answer, str) or not local_answer.strip():
+    raise RuntimeError("Local model returned an empty answer; inspect llama_server.log.")
+print("LOCAL TEST REPLY:", local_answer[:700])
 
-t0 = time.time()
-print("\nTEST REPLY:\n" + chat("Explain Kubernetes in three simple sentences.", 100))
-print(f"(took {time.time() - t0:.1f}s on CPU)")
-
-# The auth proxy below is a small aiohttp app; run it with this notebook's Python.
+# ------------------------ 6. auth proxy implementation ----------------------
 try:
     import aiohttp  # noqa: F401
 except ImportError:
     run([sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check", "aiohttp"])
-PY = sys.executable
 
-# ------------- 10. API-key proxy + Cloudflare tunnel + Worker gateway -----
-# Your apps -> Cloudflare Worker (fixed URL) -> quick tunnel (URL changes every
-# session) -> auth proxy (port 8002, needs Bearer key) -> llama.cpp server (8001, localhost).
-# Each session the script registers the new tunnel URL with the Worker, so the
-# Worker URL and API key never change.
-#
-# SECRETS: these must match the secrets stored in your Cloudflare Worker.
-#   API_KEY        = Worker secret API_KEY   (what your apps send as the Bearer key)
-#   REGISTER_TOKEN = Worker secret REGISTER_TOKEN (only used to register the tunnel)
-# (Hardcoded on purpose for now.)
-# If you rotate them in Cloudflare, change them here too.
-WORKER_URL = "https://ai-builder.keyaurbhlonde.workers.dev"
-API_KEY = "srkxOGWqn454X4GtmzxMtdOJHpLe8t_KV6KFvmXnLvE"
-REGISTER_TOKEN = "KqQYN-RpPqUAkowK1zvUcGsbDzwKqN1HnA-X9wT6DCk"
-
-PROXY_PORT = 8002
-PROXY_BASE = f"http://127.0.0.1:{PROXY_PORT}"
-KEY_FILE = f"{WORK}/.api_key"
-PROXY_PY = f"{WORK}/auth_proxy.py"
-PROXY_LOG = f"{WORK}/auth_proxy.log"
-CF_BIN = f"{WORK}/cloudflared"
-CF_LOG = f"{WORK}/cloudflared.log"
-CF_DOWNLOAD = ("https://github.com/cloudflare/cloudflared/releases/latest/download/"
-               "cloudflared-linux-amd64")
-
-AUTH_PROXY_CODE = '''
-import os, hmac, json
+AUTH_PROXY_CODE = r'''import asyncio, hmac, json, os
+from contextlib import suppress
 import aiohttp
 from aiohttp import web
 
-UPSTREAM = os.environ["UPSTREAM"]
+UPSTREAM = os.environ["UPSTREAM"].rstrip("/")
 PORT = int(os.environ["PROXY_PORT"])
-with open(os.environ["KEY_FILE"]) as f:
+with open(os.environ["KEY_FILE"], encoding="utf-8") as f:
     KEY = f.read().strip()
 
-DROP_REQ = {"host", "authorization", "content-length", "connection", "accept-encoding",
-            "transfer-encoding"}
-KEEP_RESP = {"content-type", "cache-control"}
+DROP_REQ = {
+    "host", "authorization", "content-length", "connection", "keep-alive",
+    "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding",
+    "upgrade", "accept-encoding"
+}
+KEEP_RESP = {"content-type", "cache-control", "retry-after", "www-authenticate"}
+HEARTBEAT_SECONDS = 12
 
-def flatten_content(content):
-    """Chat apps often send content as [{"type":"text","text":"hi"}]. llama-cpp-python's
-    Qwen template needs a plain string, so join the text parts."""
-    if content is None:
-        return ""
-    if isinstance(content, list):
-        parts = []
-        for p in content:
-            if isinstance(p, str):
-                parts.append(p)
-            elif isinstance(p, dict) and p.get("type", "text") == "text":
-                parts.append(str(p.get("text", "")))
-        return "\\n".join(parts)
-    return content
 
-def normalize_chat_body(body):
+def normalize_content(content):
+    # Text-only models need OpenAI text-part arrays normalized to plain strings.
+    if not isinstance(content, list):
+        return content
+    parts = []
+    for part in content:
+        if isinstance(part, str):
+            parts.append(part)
+        elif isinstance(part, dict) and part.get("type", "text") == "text":
+            parts.append(str(part.get("text", "")))
+    return "\n".join(parts)
+
+
+def normalize_body(raw):
     try:
-        data = json.loads(body)
-    except Exception:
-        return body
-    if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
-        return body
-    for m in data["messages"]:
-        if isinstance(m, dict):
-            m["content"] = flatten_content(m.get("content"))
-    return json.dumps(data).encode()
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw, False
+    if not isinstance(data, dict):
+        return raw, False
+    messages = data.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            if isinstance(message, dict) and isinstance(message.get("content"), list):
+                message["content"] = normalize_content(message["content"])
+    streaming = data.get("stream") is True
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), streaming
+
+
+async def relay_body(upstream, response, is_sse):
+    iterator = upstream.content.iter_any().__aiter__()
+    pending = None
+    try:
+        while True:
+            pending = asyncio.create_task(iterator.__anext__())
+            while True:
+                done, _ = await asyncio.wait({pending}, timeout=HEARTBEAT_SECONDS)
+                if done:
+                    try:
+                        chunk = pending.result()
+                    except StopAsyncIteration:
+                        return
+                    if chunk:
+                        await response.write(chunk)
+                    break
+                # SSE comments are ignored by clients but keep the downstream stream alive
+                # while CPU prompt evaluation produces no model tokens.
+                if is_sse:
+                    await response.write(b": keep-alive\n\n")
+    except (ConnectionResetError, BrokenPipeError):
+        if pending is not None and not pending.done():
+            pending.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await pending
+        return
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await pending
+
 
 async def handle(request):
     auth = request.headers.get("Authorization", "")
     token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    if not (token and hmac.compare_digest(token, KEY)):
+    if not token or not hmac.compare_digest(token, KEY):
         return web.json_response(
-            {"error": {"message": "Unauthorized: missing or invalid API key",
-                       "type": "AuthenticationError", "code": 401}},
-            status=401, headers={"WWW-Authenticate": "Bearer"})
+            {"error": {"message": "Missing or invalid API key", "type": "authentication_error"}},
+            status=401,
+            headers={"WWW-Authenticate": "Bearer", "Cache-Control": "no-store"},
+        )
+    if not request.path.startswith("/v1/"):
+        return web.json_response({"error": {"message": "Not found", "type": "not_found"}}, status=404)
+
+    raw = await request.read()
+    requested_stream = False
+    if request.method == "POST" and request.path.rstrip("/").endswith(("/chat/completions", "/completions")):
+        raw, requested_stream = normalize_body(raw)
+
     headers = {k: v for k, v in request.headers.items() if k.lower() not in DROP_REQ}
-    body = await request.read()
-    if request.method == "POST" and request.path.rstrip("/").endswith("/chat/completions"):
-        body = normalize_chat_body(body)
-    timeout = aiohttp.ClientTimeout(total=900, sock_connect=10)
-    async with aiohttp.ClientSession(timeout=timeout, auto_decompress=False) as session:
-        try:
-            async with session.request(request.method, UPSTREAM + str(request.rel_url),
-                                       headers=headers, data=body) as up:
-                resp = web.StreamResponse(status=up.status)
-                for k, v in up.headers.items():
-                    if k.lower() in KEEP_RESP:
-                        resp.headers[k] = v
-                resp.enable_chunked_encoding()
-                await resp.prepare(request)
-                async for chunk in up.content.iter_any():
-                    await resp.write(chunk)
-                await resp.write_eof()
-                return resp
-        except aiohttp.ClientError as e:
-            return web.json_response(
-                {"error": {"message": f"Upstream model server unreachable: {e}",
-                           "type": "BadGateway", "code": 502}}, status=502)
+    headers["Accept-Encoding"] = "identity"
+    timeout = aiohttp.ClientTimeout(total=3600, sock_connect=15, sock_read=None)
+    response = None
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, auto_decompress=False) as session:
+            async with session.request(
+                request.method,
+                UPSTREAM + str(request.rel_url),
+                headers=headers,
+                data=raw if request.method not in ("GET", "HEAD") else None,
+                allow_redirects=False,
+            ) as upstream:
+                upstream_type = upstream.headers.get("Content-Type", "")
+                is_sse = requested_stream and "text/event-stream" in upstream_type.lower() and upstream.status < 400
+                resp_headers = {k: v for k, v in upstream.headers.items() if k.lower() in KEEP_RESP}
+                resp_headers["Cache-Control"] = "no-store, no-cache, no-transform"
+                resp_headers["X-Accel-Buffering"] = "no"
+                if is_sse:
+                    resp_headers["Content-Type"] = "text/event-stream; charset=utf-8"
+
+                response = web.StreamResponse(status=upstream.status, headers=resp_headers)
+                # Use close-delimited streaming instead of explicitly forcing HTTP/1.1
+                # chunked transfer encoding, which triggered cloudflared framing errors.
+                response.force_close()
+                await response.prepare(request)
+                await relay_body(upstream, response, is_sse)
+                with suppress(ConnectionResetError, BrokenPipeError, RuntimeError):
+                    await response.write_eof()
+                return response
+    except asyncio.CancelledError:
+        # The client may have navigated away or cancelled generation.
+        raise
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError) as exc:
+        if response is not None and response.prepared:
+            print("Upstream stream interrupted:", type(exc).__name__, flush=True)
+            with suppress(ConnectionResetError, BrokenPipeError, RuntimeError):
+                await response.write_eof()
+            return response
+        return web.json_response(
+            {"error": {"message": f"Upstream model server unavailable: {type(exc).__name__}", "type": "bad_gateway"}},
+            status=502,
+            headers={"Cache-Control": "no-store", "Retry-After": "3"},
+        )
+
 
 app = web.Application(client_max_size=64 * 1024 * 1024)
 app.router.add_route("*", "/{tail:.*}", handle)
 web.run_app(app, host="127.0.0.1", port=PORT, access_log=None, print=None)
 '''
 
-def http_status(url, headers=None, data=None, timeout=15):
-    """Return (status, body_text) without raising on 4xx/5xx."""
-    # Explicit User-Agent: Cloudflare can reject urllib's default one (error 1010).
-    hdrs = {"User-Agent": "kaggle-cpu-oneshot/1.0"}
-    hdrs.update(headers or {})
-    req = urllib.request.Request(
-        url, headers=hdrs,
-        data=json.dumps(data).encode() if data is not None else None)
-    if data is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, r.read().decode(errors="replace")
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode(errors="replace")
+log("6/9 Write/restart the hardened auth proxy")
+WORK.mkdir(parents=True, exist_ok=True)
+KEY_FILE.write_text(API_KEY, encoding="utf-8")
+os.chmod(KEY_FILE, 0o600)
+PROXY_PY.write_text(AUTH_PROXY_CODE, encoding="utf-8")
+os.chmod(PROXY_PY, 0o600)
+# Kill only a previous copy of this exact proxy script (not the model process).
+stop_processes(lambda cmd: str(PROXY_PY) in cmd and "auth_proxy.py" in cmd)
+time.sleep(1)
+proxy_env = dict(os.environ, KEY_FILE=str(KEY_FILE), UPSTREAM=BASE, PROXY_PORT=str(PROXY_PORT))
+with PROXY_LOG.open("w", encoding="utf-8") as log_file:
+    subprocess.Popen(
+        [sys.executable, str(PROXY_PY)], stdin=subprocess.DEVNULL,
+        stdout=log_file, stderr=subprocess.STDOUT, env=proxy_env, start_new_session=True,
+    )
 
-def proxy_alive():
-    try:
-        return http_status(f"{PROXY_BASE}/v1/models", timeout=3)[0] == 401
-    except Exception:
-        return False
+# Missing key must fail; correct key should reach the local model server.
+if not wait_for(lambda: http_json(f"{PROXY_BASE}/v1/models", timeout=3)[0] == 401, seconds=30):
+    print(tail(PROXY_LOG, 60))
+    raise RuntimeError("Auth proxy failed to start. See auth_proxy.log above.")
+print("Auth proxy ready on", PROXY_BASE, "(unauthenticated request correctly returns 401).")
 
+# ---------------------- 7. Cloudflare tunnel -------------------------------
 def read_tunnel_url():
-    """URL of the most recently created quick tunnel in the cloudflared log."""
     try:
-        with open(CF_LOG, errors="ignore") as f:
-            logs = f.read()
-    except Exception:
+        text = CF_LOG.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
         return None
-    blocks = logs.split("Your quick Tunnel has been created!")
-    if len(blocks) > 1:
-        m = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", blocks[-1])
-        if m:
-            return m.group(0)
-    return None
+    matches = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", text)
+    return matches[-1] if matches else None
 
-def tunnel_running():
-    return subprocess.run(["pgrep", "-f", f"{CF_BIN} tunnel"],
-                          capture_output=True).returncode == 0
 
-log("10/10 Auth proxy + Cloudflare tunnel + Worker registration")
+def is_tunnel_running():
+    # Inspect /proc to avoid matching a pgrep command against itself.
+    proc_root = Path("/proc")
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            cmd = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="ignore")
+            if str(CF_BIN) in cmd and "tunnel" in cmd and "--url" in cmd:
+                return True
+        except (OSError, PermissionError):
+            continue
+    return False
 
-# --- API key file read by the auth proxy (fixed key = the Worker's API_KEY secret) ---
-_old_key = open(KEY_FILE).read().strip() if os.path.exists(KEY_FILE) else None
-fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-with os.fdopen(fd, "w") as f:
-    f.write(API_KEY)
-if _old_key is not None and _old_key != API_KEY:
-    # the running proxy loaded the old key at startup; restart it with the new one
-    subprocess.run(["pkill", "-f", "auth_proxy.py"], capture_output=True)
-    time.sleep(2)
 
-# --- auth proxy ---
-_old_code = open(PROXY_PY).read() if os.path.exists(PROXY_PY) else None
-if _old_code is not None and _old_code != AUTH_PROXY_CODE:
-    # an older proxy is running with outdated code: stop it so the new code is used
-    subprocess.run(["pkill", "-f", PROXY_PY], capture_output=True)
-    time.sleep(2)
-if not proxy_alive():
-    subprocess.run(["pkill", "-f", PROXY_PY], capture_output=True)
-    with open(PROXY_PY, "w") as f:
-        f.write(AUTH_PROXY_CODE)
-    penv = dict(os.environ, KEY_FILE=KEY_FILE,
-                UPSTREAM=BASE, PROXY_PORT=str(PROXY_PORT))
-    with open(PROXY_LOG, "w") as lf:
-        subprocess.Popen([PY, PROXY_PY], stdin=subprocess.DEVNULL, stdout=lf,
-                         stderr=subprocess.STDOUT, env=penv, start_new_session=True)
-    for _ in range(30):
-        if proxy_alive():
-            break
-        time.sleep(1)
-    else:
-        print(tail(PROXY_LOG, 40))
-        raise RuntimeError("Auth proxy did not start (log above).")
-print(f"Auth proxy OK on {PROXY_BASE} (no key -> 401).")
-
-# --- cloudflared ---
-if not os.path.exists(CF_BIN):
-    print("Downloading cloudflared ...")
-    for attempt in range(1, 4):
-        subprocess.run(["curl", "-fL", "--retry", "5", "--retry-delay", "3",
-                        "-o", CF_BIN, CF_DOWNLOAD])
-        if os.path.exists(CF_BIN) and os.path.getsize(CF_BIN) > 10_000_000:
-            break
-    else:
+log("7/9 Start/reuse Cloudflare quick tunnel")
+if not CF_BIN.exists() or CF_BIN.stat().st_size < 10_000_000:
+    print("Downloading cloudflared binary...")
+    if not curl_download(CF_DOWNLOAD, CF_BIN, tries=3) or CF_BIN.stat().st_size < 10_000_000:
         raise RuntimeError("Could not download cloudflared from GitHub.")
     os.chmod(CF_BIN, 0o755)
 
-PUBLIC_URL = read_tunnel_url() if tunnel_running() else None
+PUBLIC_URL = read_tunnel_url() if is_tunnel_running() else None
 if not PUBLIC_URL:
-    subprocess.run(["pkill", "-f", f"{CF_BIN} tunnel"], capture_output=True)
-    time.sleep(2)
-    with open(CF_LOG, "w") as lf:
-        subprocess.Popen([CF_BIN, "tunnel", "--no-autoupdate", "--url", PROXY_BASE],
-                         stdin=subprocess.DEVNULL, stdout=lf, stderr=subprocess.STDOUT,
-                         start_new_session=True)
-    for _ in range(60):
-        PUBLIC_URL = read_tunnel_url()
-        if PUBLIC_URL:
-            break
-        time.sleep(2)
-    else:
-        print(tail(CF_LOG, 40))
-        raise RuntimeError("cloudflared did not report a tunnel URL (log above).")
-print("Tunnel URL:", PUBLIC_URL)
+    # Stop only the previous quick tunnel process owned by this setup.
+    stop_processes(lambda cmd: str(CF_BIN) in cmd and "tunnel" in cmd and "--url" in cmd)
+    time.sleep(1)
+    with CF_LOG.open("w", encoding="utf-8") as log_file:
+        subprocess.Popen(
+            [str(CF_BIN), "tunnel", "--no-autoupdate", "--url", PROXY_BASE],
+            stdin=subprocess.DEVNULL, stdout=log_file, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    if not wait_for(lambda: bool(read_tunnel_url()), seconds=120, interval=2):
+        print(tail(CF_LOG, 60))
+        raise RuntimeError("cloudflared did not create a quick tunnel.")
+    PUBLIC_URL = read_tunnel_url()
+print("Current quick tunnel:", PUBLIC_URL)
 
-# --- register the tunnel URL with the Cloudflare Worker ---
-# (the Worker itself reaches the tunnel from Cloudflare's side, so Kaggle's slow DNS
-#  for new trycloudflare.com names does not matter here)
+# ----------------------- 8. Register with Worker ----------------------------
+log("8/9 Register tunnel with the existing Cloudflare Worker")
 registered = False
 for attempt in range(1, 7):
-    try:
-        st, body = http_status(f"{WORKER_URL}/_register",
-                               headers={"Authorization": f"Bearer {REGISTER_TOKEN}"},
-                               data={"url": PUBLIC_URL}, timeout=30)
-        print(f"Worker registration (attempt {attempt}): HTTP {st} {body[:200]}")
-        if 200 <= st < 300:
-            registered = True
-            break
-        if st in (401, 403):
-            raise RuntimeError(
-                "Worker rejected REGISTER_TOKEN (HTTP %d). It must match the Worker's "
-                "REGISTER_TOKEN secret. Update it in the SECRETS block and re-run." % st)
-    except RuntimeError:
-        raise
-    except Exception as e:
-        print(f"Worker registration (attempt {attempt}): {type(e).__name__}: {e}")
-    time.sleep(5)
+    status, body = http_json(
+        WORKER_URL + "/_register",
+        data={"url": PUBLIC_URL},
+        headers={"Authorization": f"Bearer {REGISTER_TOKEN}"},
+        timeout=30,
+    )
+    print(f"Worker registration attempt {attempt}: HTTP {status} {body[:180]}")
+    if 200 <= status < 300:
+        registered = True
+        break
+    if status in (401, 403):
+        raise RuntimeError("Worker rejected REGISTER_TOKEN. It must match the current Worker secret.")
+    time.sleep(4)
 if not registered:
-    raise RuntimeError("Could not register the tunnel with the Worker (see messages above).")
+    raise RuntimeError("Could not register the tunnel with the Worker; see errors above.")
+print("MODEL AND ROUTING: PASS ->", SERVED_NAME, "registered via the Worker")
 
-# --- end-to-end check through the Worker (Mac/apps -> Worker -> tunnel -> proxy -> model server) ---
-verified = False
-for attempt in range(1, 25):   # up to ~2 minutes: the new tunnel needs a moment to resolve
-    try:
-        st, body = http_status(f"{WORKER_URL}/v1/chat/completions",
-                               headers={"Authorization": f"Bearer {API_KEY}"},
-                               data={"model": SERVED_NAME,
-                                     "messages": [{"role": "user",
-                                                   "content": "Reply with exactly: CPU SERVER WORKS"}],
-                                     "max_tokens": 20, "stream": False}, timeout=60)
-        if st == 200:
-            verified = True
-            print("Gateway check OK (HTTP 200). Model said:",
-                  json.loads(body)["choices"][0]["message"]["content"])
-            break
-        if st in (401, 403):
-            raise RuntimeError(
-                "Worker rejected API_KEY (HTTP %d). It must match the Worker's API_KEY "
-                "secret. Update it in the SECRETS block and re-run." % st)
-        print(f"Attempt {attempt}: gateway HTTP {st} {body[:150]} (tunnel still warming up?)")
-    except RuntimeError:
-        raise
-    except Exception as e:
-        print(f"Attempt {attempt}: {type(e).__name__}: {e}")
-    time.sleep(5)
-if not verified:
-    print("NOTE: the gateway did not return 200 yet. The tunnel may still be warming up - "
-          "re-run just this cell in a minute, or test from your Mac with the curl below.")
+# --------------------- 9. End-to-end gateway tests --------------------------
+log("9/9 End-to-end tests through the fixed Worker URL")
 
-print(f"""
-==========================================================================
-DONE. Everything is running in the background.
+# Non-stream test. The higher timeout is intentional for a CPU model.
+status, body = http_json(
+    WORKER_URL + "/v1/chat/completions",
+    data={
+        "model": SERVED_NAME,
+        "messages": [{"role": "user", "content": "Reply exactly: NONSTREAM_OK"}],
+        "max_tokens": 24,
+        "temperature": 0,
+        "stream": False,
+    },
+    headers={
+        "Authorization": f"Bearer {API_KEY}",
+        "User-Agent": "qwen-kaggle-client/1.0",
+    },
+    timeout=300,
+)
+if status != 200:
+    print("Worker returned a non-200 response. Recent tunnel/proxy logs follow:")
+    print("--- auth_proxy.log ---\n", tail(PROXY_LOG, 40))
+    print("--- cloudflared.log ---\n", tail(CF_LOG, 30))
+    raise RuntimeError(f"Non-stream gateway test failed: HTTP {status}: {body[:1500]}")
+try:
+    nonstream_answer = json.loads(body)["choices"][0]["message"]["content"]
+except Exception as exc:
+    raise RuntimeError(f"Worker returned HTTP 200 but invalid chat JSON: {body[:1000]}") from exc
+if not isinstance(nonstream_answer, str) or not nonstream_answer.strip():
+    raise RuntimeError("Non-stream gateway returned an empty answer. See logs below.")
+if "NONSTREAM_OK" not in nonstream_answer:
+    raise RuntimeError(f"Non-stream request returned HTTP 200 but not the expected marker: {nonstream_answer[:500]}")
+print("NON-STREAMING INFERENCE: PASS ->", nonstream_answer.strip()[:250])
 
-Local (inside Kaggle) : {BASE}/v1          (no key)
-Gateway (fixed URL)   : {WORKER_URL}/v1
-Current tunnel        : {PUBLIC_URL}   (changes every session; registered with the Worker)
-Model name            : {SERVED_NAME}
+# Streaming test. SSE heartbeat comment lines are ignored; actual token deltas are joined.
+stream_payload = {
+    "model": SERVED_NAME,
+    "messages": [{"role": "user", "content": "Reply exactly: STREAM_OK"}],
+    "max_tokens": 24,
+    "temperature": 0,
+    "stream": True,
+}
+request = urllib.request.Request(
+    WORKER_URL + "/v1/chat/completions",
+    data=json.dumps(stream_payload).encode("utf-8"),
+    headers={
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+        # Do not set Accept: text/event-stream here; this exact shape succeeded
+        # in the end-to-end test after the default urllib request was blocked.
+        "User-Agent": "qwen-kaggle-client/1.0",
+    },
+)
+stream_parts = []
+stream_done = False
+try:
+    with urllib.request.urlopen(request, timeout=300) as response:
+        if response.status != 200:
+            raise RuntimeError(f"Streaming gateway test failed: HTTP {response.status}")
+        for raw_line in response:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line or line.startswith(":") or not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if payload == "[DONE]":
+                stream_done = True
+                break
+            try:
+                event = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            choices = event.get("choices") or []
+            if choices:
+                delta = (choices[0].get("delta") or {}).get("content")
+                if delta:
+                    stream_parts.append(delta)
+except urllib.error.HTTPError as exc:
+    print(f"Streaming HTTP error: {exc.code} {exc.reason}; body: {exc.read().decode('utf-8', errors='replace')[:1500]}")
+    print("Streaming test encountered an error. Recent proxy/server/tunnel logs follow:")
+    print("--- auth_proxy.log ---\n", tail(PROXY_LOG, 40))
+    print("--- llama_server.log ---\n", tail(MODEL_LOG, 40))
+    print("--- cloudflared.log ---\n", tail(CF_LOG, 30))
+    raise
+except Exception:
+    print("Streaming test encountered an error. Recent proxy/server/tunnel logs follow:")
+    print("--- auth_proxy.log ---\n", tail(PROXY_LOG, 40))
+    print("--- llama_server.log ---\n", tail(MODEL_LOG, 40))
+    print("--- cloudflared.log ---\n", tail(CF_LOG, 30))
+    raise
 
-In any OpenAI-compatible app use exactly:
-  Base URL: {WORKER_URL}/v1     API key: your Worker API_KEY     Model: {SERVED_NAME}
+stream_answer = "".join(stream_parts).strip()
+if not stream_answer:
+    print("--- auth_proxy.log ---\n", tail(PROXY_LOG, 40))
+    print("--- llama_server.log ---\n", tail(MODEL_LOG, 40))
+    raise RuntimeError("Streaming request returned no text. Non-stream passed, so inspect the client/SSE path.")
+if "STREAM_OK" not in stream_answer:
+    raise RuntimeError(f"Streaming request returned text but not the expected marker: {stream_answer[:500]}")
+if not stream_done:
+    raise RuntimeError("Streaming response did not end with data: [DONE]. Check the proxy/tunnel logs.")
+print("STREAMING INFERENCE: PASS ->", stream_answer[:250])
+print("Streaming terminator: PASS -> data: [DONE]")
 
-Test from your Mac:
-  export API_KEY_ENV='<your API_KEY>'
-  curl -sS {WORKER_URL}/v1/chat/completions \\
-    -H "Authorization: Bearer $API_KEY_ENV" -H "Content-Type: application/json" \\
-    -d '{{"model": "{SERVED_NAME}", "messages": [{{"role": "user", "content": "Say hello"}}], "max_tokens": 30}}'
-
-Notes
-  - Only the tunnel URL changes between sessions; the script re-registers it automatically.
-  - Streaming works through the local proxy; whether it works end to end depends on your Worker.
-  - Logs: {LOG}  {PROXY_LOG}  {CF_LOG}
-  - Stop everything: !pkill -f llama-server; pkill -f llama_cpp.server; pkill -f auth_proxy.py; pkill -f cloudflared
-==========================================================================
-""")
-
-# ------------------- final printout: token + URLs -------------------------
-# Re-reads the key file and the cloudflared log (nothing is modified), so the
-# very last lines of the cell output always show the current values.
-from pathlib import Path
-
-_key_path = Path(KEY_FILE)
-print("AUTH TOKEN:", _key_path.read_text().strip() if _key_path.exists()
-      else "(auth token file not found!)")
-
-print("GATEWAY URL:", WORKER_URL)
-print("API BASE URL:", WORKER_URL + "/v1")
-print("CHAT COMPLETIONS:", WORKER_URL + "/v1/chat/completions")
-print("MODEL NAME:", SERVED_NAME)
-print("CURRENT TUNNEL (registered with the Worker):", read_tunnel_url() or "not found in logs")
+print("\n" + "=" * 76)
+print("ALL CHECKS PASSED — Kaggle CPU model + Cloudflare Worker gateway is responding.")
+print("Local API base  :", BASE + "/v1")
+print("Fixed API base  :", WORKER_URL + "/v1")
+print("Chat endpoint   :", WORKER_URL + "/v1/chat/completions")
+print("Quick tunnel    :", PUBLIC_URL)
+print("Model name      :", SERVED_NAME)
+print("Inference mode  : CPU (llama-cpp-python)")
+print("Context size    :", CTX)
+print("Logs            :", MODEL_LOG, PROXY_LOG, CF_LOG)
+print("Credentials are hardcoded in this cell but are not printed in the output.")
+print("=" * 76)

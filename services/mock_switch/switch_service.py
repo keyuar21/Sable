@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
+import json
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -22,12 +23,16 @@ app.add_middleware(
 
 # ---------- VPA → Bank URL routing table ----------
 # In real UPI, NPCI maintains this; @-suffix maps to a member bank's API
-ROUTING_TABLE: dict[str, str] = {
+_DEFAULT_ROUTING_TABLE: dict[str, str] = {
     "@mockbank":   "http://localhost:5003",   # Payer Bank
     "@mockbank2":  "http://localhost:5004",   # Payee Bank
     "@hdfcbank":   "http://localhost:5003",   # HDFC Bank (Payer Bank simulator)
     "@okhdfcbank": "http://localhost:5003",   # HDFC Bank handle
 }
+try:
+    ROUTING_TABLE: dict[str, str] = json.loads(os.environ.get("ROUTING_TABLE_JSON", "")) or _DEFAULT_ROUTING_TABLE
+except json.JSONDecodeError as exc:
+    raise RuntimeError("ROUTING_TABLE_JSON must be valid JSON") from exc
 
 route_log: list[dict] = []   # In-memory route audit log
 

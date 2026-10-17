@@ -12,6 +12,9 @@ service:
 
 replicaCount: 2
 
+env:
+  ROUTING_TABLE_JSON: '{"@mockbank":"http://upi-payer-bank:5003","@hdfcbank":"http://upi-payer-bank:5003","@okhdfcbank":"http://upi-payer-bank:5003","@mockbank2":"http://upi-payee-bank:5004"}'
+
 app:
   config:
     service: switch
@@ -33,3 +36,21 @@ autoscaling:
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
+
+ingress:
+  enabled: true
+  className: nginx
+  # Published as api.upi-sim.local/switch; the rewrite strips the prefix so the
+  # pod still sees its own paths (/health, /resolve, ...).
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts:
+    - host: api.upi-sim.local
+      paths:
+        - path: /switch(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - api.upi-sim.local
+      secretName: upi-sim-tls

@@ -1,0 +1,28 @@
+# kind cluster for the UPI simulator.
+#
+# Two things here matter for Ingress:
+#   * extraPortMappings publishes the node's 80/443 on the host, so
+#     http://upi-sim.local reaches the ingress-nginx controller.
+#   * the ingress-ready=true label is what ingress-nginx's kind manifest
+#     selects on; without it the controller Pod stays Pending forever.
+#
+# Create with:
+#   kind create cluster --config deploy/helm/kind-config.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: upi-helm-test
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP

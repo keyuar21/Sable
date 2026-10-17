@@ -11,6 +11,10 @@ service:
 
 replicaCount: 1   # ReadWriteOnce volume: exactly one writer
 
+env:
+  AUTH_SERVICE_URL: http://upi-auth:5005
+  PAYER_DB_PATH: /data/payer_ledger.db
+
 app:
   config:
     service: payer-bank
@@ -41,3 +45,21 @@ existingSecret: upi-supabase
 resources:
   requests: { cpu: 100m, memory: 192Mi }
   limits:   { memory: 512Mi }
+
+ingress:
+  enabled: true
+  className: nginx
+  # app.js calls `${API.payerBank}/balance/<vpa>`; the rewrite strips /payer so
+  # the pod sees /balance/<vpa>.
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts:
+    - host: api.upi-sim.local
+      paths:
+        - path: /payer(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - api.upi-sim.local
+      secretName: upi-sim-tls

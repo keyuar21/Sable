@@ -13,6 +13,9 @@ service:
 
 replicaCount: 1
 
+env:
+  VOICE_BIOMETRICS_DB_PATH: /data/voice_biometrics.db
+
 app:
   config:
     service: auth
@@ -50,3 +53,20 @@ resources:
   requests: { cpu: 250m, memory: 768Mi }
   limits:   { memory: 2Gi }
 
+ingress:
+  enabled: true
+  className: nginx
+  # Published as api.upi-sim.local/auth; the rewrite strips the prefix so the
+  # pod still sees /enroll, /verify, /health.
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts:
+    - host: api.upi-sim.local
+      paths:
+        - path: /auth(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - api.upi-sim.local
+      secretName: upi-sim-tls

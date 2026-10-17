@@ -7,7 +7,10 @@
 
 'use strict';
 
-const AUTH_API = 'http://localhost:5005';
+// Read the runtime config (see config.js) so the browser talks to the Ingress.
+// The fallback is the Ingress URL, not the in-cluster Service DNS.
+const RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
+const AUTH_API = RUNTIME.auth || 'https://api.upi-sim.local/auth';
 
 // ---------- base64url <-> ArrayBuffer helpers (WebAuthn moves binary data) ----------
 

@@ -66,6 +66,10 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+  tls:
+    - hosts:
+        - upi-sim.local
+      secretName: upi-sim-tls
 
 resources:
   requests: { cpu: 25m, memory: 64Mi }
