@@ -16,6 +16,7 @@ import os
 import secrets
 import sqlite3
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -212,9 +213,20 @@ def _mirror_account_update(vpa: str, updates: dict) -> None:
     The lockout counter is bookkeeping; an unconfigured mirror is a normal
     state, not an error. Sending it anyway used to raise, which turned a
     successful sign-in into a 500.
+
+    Fire-and-forget, because Supabase answers in ~17s from inside this cluster
+    while the client timeout is 4s. Done inline, every PIN verification paid
+    that whole timeout twice — once reading the account and once writing the
+    counter — so sign-in took ~5s and looked like a hang.
     """
     if not supabase_db.is_supabase_configured():
         return
+    threading.Thread(
+        target=_mirror_account_update_now, args=(vpa, updates), daemon=True
+    ).start()
+
+
+def _mirror_account_update_now(vpa: str, updates: dict) -> None:
     try:
         with httpx.Client(timeout=4.0) as client:
             client.patch(

@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>UPI Sim — Voice Payments</title>
-  <meta name="description" content="A polished voice-first UPI payment simulator.">
-  <link rel="stylesheet" href="styles.css?v=bill-2">
+  <title>Sable — Voice Payments</title>
+  <meta name="description" content="Sable — a polished voice-first UPI payments app.">
+  <link rel="stylesheet" href="styles.css?v=ux-8">
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     <div class="app-header">
       <div class="app-logo">
         <div class="logo-icon"><span></span><span></span><span></span></div>
-        <span>upi</span><span class="logo-dot">.</span>
+        <span>Sable</span><span class="logo-dot">.</span>
       </div>
       <div class="header-avatar" id="header-avatar" title="you@mockbank">K</div>
     </div>
@@ -118,12 +118,12 @@
           <div class="login-divider"><span>OR</span></div>
 
           <button id="btn-start-onboarding" class="onboard-action-btn" type="button">
-            <span class="onboard-icon">🏦</span>
+            <span class="onboard-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-bank"></use></svg></span>
             <div class="onboard-text">
               <div class="onboard-title">New User? Link Bank Account</div>
               <div class="onboard-sub">Device Binding • NPCI Discovery • Biometric MPIN</div>
             </div>
-            <span class="onboard-arrow">›</span>
+            <span class="onboard-arrow"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-chevronRight"></use></svg></span>
           </button>
 
         </div>
@@ -133,7 +133,7 @@
       <div class="screen" id="screen-voice-enroll">
         <div class="voice-enroll-inner">
           <div class="voice-enroll-badge">Required</div>
-          <div class="voice-enroll-icon">🎙️</div>
+          <div class="voice-enroll-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-mic"></use></svg></div>
           <div class="voice-enroll-title">Set up Voice ID</div>
           <div class="voice-enroll-sub" id="voice-enroll-sub">
             Voice ID uses <strong>ECAPA-TDNN</strong> to recognise your voice and
@@ -154,7 +154,7 @@
           </div>
 
           <div class="voice-safety-note">
-            <span class="lock">🔒</span>The code is a one-time number, not your UPI PIN.
+            <span class="lock"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-lock"></use></svg></span>The code is a one-time number, not your UPI PIN.
             <strong>Never say your PIN out loud.</strong>
           </div>
 
@@ -171,7 +171,7 @@
           </div>
 
           <button class="pay-now-btn" id="btn-voice-enroll-record">
-            🎤 Record sample 1 of 3
+            <svg class="icon icon-lead" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-mic"></use></svg> Record sample 1 of 3
           </button>
           <div class="voice-enroll-error" id="voice-enroll-error"></div>
         </div>
@@ -274,7 +274,7 @@
               </div>
 
               <div class="biometric-optin-card">
-                <div class="bio-icon">👆</div>
+                <div class="bio-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-tap"></use></svg></div>
                 <div class="bio-details">
                   <div class="bio-title">Enable Biometric Payments (WebAuthn)</div>
                   <div class="bio-sub">Touch ID / Face ID / Passkey unlocks cryptographic single-tap payments.</div>
@@ -324,23 +324,23 @@
         <!-- Quick Actions -->
         <div class="quick-actions">
           <button class="action-btn voice-main" id="btn-voice-pay">
-            <div class="action-icon">🎤</div>
+            <div class="action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-mic"></use></svg></div>
             <span class="action-label">Voice Pay</span>
           </button>
           <button class="action-btn" id="btn-qr-demo">
-            <div class="action-icon">📷</div>
+            <div class="action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-camera"></use></svg></div>
             <span class="action-label">Scan QR</span>
           </button>
           <button class="action-btn" id="btn-history-nav">
-            <div class="action-icon">📋</div>
+            <div class="action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-receipt"></use></svg></div>
             <span class="action-label">History</span>
           </button>
           <button class="action-btn" id="btn-recharge">
-            <div class="action-icon">📱</div>
+            <div class="action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-smartphone"></use></svg></div>
             <span class="action-label">Recharge</span>
           </button>
           <button class="action-btn" id="btn-electricity">
-            <div class="action-icon">💡</div>
+            <div class="action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-bulb"></use></svg></div>
             <span class="action-label">Electricity</span>
           </button>
         </div>
@@ -352,27 +352,27 @@
         </div>
         <div class="merchant-chips">
           <div class="merchant-chip" data-vpa="swiggy@mockbank2" data-name="Swiggy" data-icon="🍔">
-            <div class="merchant-chip-icon">🍔</div>
+            <div class="merchant-chip-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-burger"></use></svg></div>
             <span class="merchant-chip-name">Swiggy</span>
           </div>
           <div class="merchant-chip" data-vpa="zomato@mockbank2" data-name="Zomato" data-icon="🍕">
-            <div class="merchant-chip-icon">🍕</div>
+            <div class="merchant-chip-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-pizza"></use></svg></div>
             <span class="merchant-chip-name">Zomato</span>
           </div>
           <div class="merchant-chip" data-vpa="blinkit@mockbank2" data-name="Blinkit" data-icon="🛵">
-            <div class="merchant-chip-icon">🛵</div>
+            <div class="merchant-chip-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-scooter"></use></svg></div>
             <span class="merchant-chip-name">Blinkit</span>
           </div>
           <div class="merchant-chip" data-vpa="sharmastore@mockbank2" data-name="Sharma Store" data-icon="🛒">
-            <div class="merchant-chip-icon">🛒</div>
+            <div class="merchant-chip-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-cart"></use></svg></div>
             <span class="merchant-chip-name">Sharma Store</span>
           </div>
           <div class="merchant-chip" data-vpa="amazon@mockbank2" data-name="Amazon" data-icon="📦">
-            <div class="merchant-chip-icon">📦</div>
+            <div class="merchant-chip-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-package"></use></svg></div>
             <span class="merchant-chip-name">Amazon</span>
           </div>
           <div class="merchant-chip" data-vpa="petrolpump@mockbank2" data-name="HP Petrol Pump" data-icon="⛽">
-            <div class="merchant-chip-icon">⛽</div>
+            <div class="merchant-chip-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-fuel"></use></svg></div>
             <span class="merchant-chip-name">HP Petrol</span>
           </div>
         </div>
@@ -388,14 +388,14 @@
         </div>
         <div class="txn-list" id="home-txn-list">
           <div class="txn-empty">
-            <div class="txn-empty-icon">💳</div>
+            <div class="txn-empty-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-card"></use></svg></div>
             No transactions yet. Try Voice Pay!
           </div>
         </div>
 
         <!-- Settlement Counter -->
         <div class="settlement-mini" id="settlement-mini" onclick="showScreen('settlement')">
-          <div class="settlement-mini-icon">🏦</div>
+          <div class="settlement-mini-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-bank"></use></svg></div>
           <div class="settlement-mini-info">
             <div class="settlement-mini-title">Interbank Settlement</div>
             <div class="settlement-mini-sub" id="settlement-mini-sub">Batch settlement — every 30s</div>
@@ -446,7 +446,7 @@
 
           <!-- Recharging your own number is the common case, so it is one tap. -->
           <button class="rc-mine" id="rc-mine" type="button">
-            <span class="rc-mine-icon">📶</span>
+            <span class="rc-mine-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-signal"></use></svg></span>
             <div class="rc-mine-text">
               <div class="rc-mine-label">My number</div>
               <div class="rc-mine-value" id="rc-mine-value">—</div>
@@ -496,7 +496,7 @@
           <video id="qr-video" class="qr-video" playsinline muted></video>
           <div class="qr-reticle"><span></span><span></span><span></span><span></span></div>
           <div class="qr-placeholder" id="qr-placeholder">
-            <div class="qr-placeholder-icon">📷</div>
+            <div class="qr-placeholder-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-camera"></use></svg></div>
             <div id="qr-placeholder-text">Starting camera…</div>
           </div>
         </div>
@@ -521,13 +521,13 @@
       <!-- ══════════════════════════════ VOICE SCREEN ════════════════════ -->
       <div class="screen" id="screen-voice">
         <div class="voice-screen">
-          <button class="voice-close-btn" id="btn-voice-close">✕</button>
+          <button class="voice-close-btn" id="btn-voice-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-x"></use></svg></button>
 
           <div class="voice-ring-container">
             <div class="voice-ring voice-ring-1"></div>
             <div class="voice-ring voice-ring-2"></div>
             <div class="voice-ring voice-ring-3"></div>
-            <button class="voice-mic-btn" id="voice-mic-btn">🎤</button>
+            <button class="voice-mic-btn" id="voice-mic-btn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-mic"></use></svg></button>
           </div>
 
           <div class="waveform" id="waveform">
@@ -567,7 +567,7 @@
         </div>
 
         <div class="merchant-hero">
-          <div class="merchant-avatar-large" id="confirm-merchant-icon">🛒</div>
+          <div class="merchant-avatar-large" id="confirm-merchant-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-cart"></use></svg></div>
           <div class="merchant-name-large" id="confirm-merchant-name">Sharma Store</div>
           <div class="merchant-vpa-small" id="confirm-merchant-vpa">sharmastore@mockbank2</div>
         </div>
@@ -612,7 +612,7 @@
           </div>
           <div class="voice-confirm-transcript" id="voice-confirm-transcript"></div>
           <div class="voice-safety-note">
-            <span class="lock">🔒</span>One-time code, not your UPI PIN. Never say your PIN out loud.
+            <span class="lock"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-lock"></use></svg></span>One-time code, not your UPI PIN. Never say your PIN out loud.
           </div>
           <div class="voice-confirm-hint" id="voice-confirm-hint">
             Say <em>“Yes, make payment”</em> — only your enrolled voice will work
@@ -620,7 +620,7 @@
         </div>
 
         <button class="pay-now-btn" id="btn-pay-now">
-          🎤 Confirm with your voice
+          <svg class="icon icon-lead" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-mic"></use></svg> Confirm with your voice
         </button>
         <span class="cancel-link" id="btn-confirm-cancel">Cancel</span>
       </div><!-- /screen-confirm -->
@@ -628,7 +628,7 @@
       <!-- ══════════════════════════════ PIN SCREEN ══════════════════════ -->
       <div class="screen" id="screen-pin">
         <div class="pin-screen-inner">
-          <div class="pin-lock-icon">🔐</div>
+          <div class="pin-lock-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-lockKey"></use></svg></div>
           <div class="pin-title">Authorize Payment</div>
           <div class="pin-subtitle">
             Enter your 4-digit UPI PIN<br>
@@ -654,7 +654,7 @@
             <button class="pin-key" data-val="9">9</button>
             <button class="pin-key empty"></button>
             <button class="pin-key" data-val="0">0</button>
-            <button class="pin-key backspace" id="pin-backspace">⌫</button>
+            <button class="pin-key backspace" id="pin-backspace" aria-label="Delete"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-backspace"></use></svg></button>
           </div>
 
           <div class="pin-error-msg" id="pin-error"></div>
@@ -672,22 +672,22 @@
           <div class="hop-flow" style="margin-bottom:24px;">
             <div class="hop-row">
               <div class="hop-node" id="hop-psp">
-                <div class="hop-node-circle">💸</div>
+                <div class="hop-node-circle"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-sendMoney"></use></svg></div>
                 <div class="hop-node-label">PSP</div>
               </div>
               <div class="hop-line" id="line-switch"></div>
               <div class="hop-node" id="hop-switch">
-                <div class="hop-node-circle">🔀</div>
+                <div class="hop-node-circle"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-shuffle"></use></svg></div>
                 <div class="hop-node-label">NPCI<br>Switch</div>
               </div>
               <div class="hop-line" id="line-payer"></div>
               <div class="hop-node" id="hop-payer-bank">
-                <div class="hop-node-circle">🏦</div>
+                <div class="hop-node-circle"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-bank"></use></svg></div>
                 <div class="hop-node-label">Payer<br>Bank</div>
               </div>
               <div class="hop-line" id="line-payee"></div>
               <div class="hop-node" id="hop-payee-bank">
-                <div class="hop-node-circle">🏪</div>
+                <div class="hop-node-circle"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-store"></use></svg></div>
                 <div class="hop-node-label">Payee<br>Bank</div>
               </div>
             </div>
@@ -697,7 +697,7 @@
 
           <!-- Live hop log -->
           <div class="hop-log" id="hop-log">
-            <div class="hop-log-header">📡 Live Transaction Log</div>
+            <div class="hop-log-header"><svg class="icon icon-lead" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-radio"></use></svg>Live Transaction Log</div>
             <div id="hop-log-entries"></div>
           </div>
         </div>
@@ -706,7 +706,7 @@
       <!-- ══════════════════════════════ SUCCESS SCREEN ══════════════════ -->
       <div class="screen" id="screen-success">
         <div class="result-screen" id="success-confetti-area">
-          <div class="result-icon-wrap success">✅</div>
+          <div class="result-icon-wrap success"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-check"></use></svg></div>
           <div class="result-title">Payment Successful!</div>
           <div class="result-amount" id="success-amount">₹500 sent</div>
           <div class="result-to" id="success-to">to Sharma Store</div>
@@ -738,7 +738,7 @@
       <!-- ══════════════════════════════ FAILED SCREEN ═══════════════════ -->
       <div class="screen" id="screen-failed">
         <div class="result-screen">
-          <div class="result-icon-wrap failed">❌</div>
+          <div class="result-icon-wrap failed"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-x"></use></svg></div>
           <div class="result-title">Payment Failed</div>
           <div class="result-amount" id="failed-amount">₹500</div>
           <div class="result-to" id="failed-to">to Sharma Store</div>
@@ -776,7 +776,7 @@
           </div>
           <div class="txn-list" id="history-txn-list">
             <div class="txn-empty">
-              <div class="txn-empty-icon">📭</div>
+              <div class="txn-empty-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-inbox"></use></svg></div>
               No transactions yet.
             </div>
           </div>
@@ -804,7 +804,7 @@
 
           <div id="settlement-list">
             <div class="txn-empty">
-              <div class="txn-empty-icon">⏳</div>
+              <div class="txn-empty-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-hourglass"></use></svg></div>
               Waiting for first settlement cycle…
             </div>
           </div>
@@ -825,24 +825,24 @@
             <div class="sheet-name" id="sheet-name">—</div>
             <div class="sheet-vpa" id="sheet-vpa">—</div>
           </div>
-          <button class="sheet-close" id="btn-sheet-close" title="Close">✕</button>
+          <button class="sheet-close" id="btn-sheet-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-x"></use></svg></button>
         </div>
         <button class="sheet-action danger" id="btn-sign-out">
-          <span class="sheet-action-icon">⏻</span>
+          <span class="sheet-action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-power"></use></svg></span>
           <div class="sheet-action-text">
             <div class="sheet-action-title">Sign out</div>
             <div class="sheet-action-sub">This device still remembers your UPI ID</div>
           </div>
         </button>
         <button class="sheet-action" id="btn-reset-demo">
-          <span class="sheet-action-icon">🔄</span>
+          <span class="sheet-action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-refresh"></use></svg></span>
           <div class="sheet-action-text">
             <div class="sheet-action-title">Reset demo data</div>
             <div class="sheet-action-sub">Restore the starting balances</div>
           </div>
         </button>
         <button class="sheet-action" id="btn-forget-device">
-          <span class="sheet-action-icon">🗑️</span>
+          <span class="sheet-action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-trash"></use></svg></span>
           <div class="sheet-action-text">
             <div class="sheet-action-title">Remove from this device</div>
             <div class="sheet-action-sub">You will need to type your UPI ID again</div>
@@ -854,7 +854,7 @@
     <div class="bottom-nav">
       <div class="nav-brand">
         <div class="logo-icon"><span></span><span></span><span></span></div>
-        <span>upi</span><span class="logo-dot">.</span>
+        <span>Sable</span><span class="logo-dot">.</span>
       </div>
       <div class="nav-item active" id="nav-home" onclick="showScreen('home')">
         <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -893,6 +893,8 @@
 <script src="config.js"></script>
 <script src="webauthn.js?v=3"></script>
 <script src="voicebio.js?v=voice-4"></script>
-<script src="app.js?v=bill-4"></script>
+<script src="icons.js?v=ux-8"></script>
+<script src="animations.js?v=ux-8"></script>
+<script src="app.js?v=ux-8"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   Voice UPI Simulator — Main Application Logic
+   Sable — main application logic
    ───────────────────────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -52,7 +52,7 @@ function startAfterLogin() {
     }
   }, 2_000);
 
-  console.log('%c🎤 Voice UPI Simulator', 'color:#4D8EFF;font-size:18px;font-weight:700');
+  console.log('%cSable', 'color:#6D5BF5;font-size:18px;font-weight:700');
   console.log('%cAll API endpoints:', 'color:#666');
   console.table({
     PSP:       `${API.psp}/health`,
@@ -412,7 +412,7 @@ function showConfirm(merchant, amount) {
   state.payment.payeeIcon  = merchant.icon;
   state.payment.amount     = amount;
 
-  document.getElementById('confirm-merchant-icon').textContent = merchant.icon;
+  document.getElementById('confirm-merchant-icon').innerHTML = iconFor(merchant.icon || 'cart');
   document.getElementById('confirm-merchant-name').textContent = merchant.name;
   document.getElementById('confirm-merchant-vpa').textContent  = merchant.vpa;
   document.getElementById('confirm-amount').textContent        = formatAmount(amount);
@@ -432,7 +432,7 @@ function showConfirm(merchant, amount) {
   const btn = document.getElementById('btn-pay-now');
   if (btn) {
     btn.disabled = false;
-    btn.textContent = '🎤 Confirm with your voice';
+    btn.innerHTML = iconFor('mic', 'icon-lead') + ' Confirm with your voice';
   }
 
   showScreen('confirm');
@@ -516,7 +516,7 @@ async function authorizePaymentWithVoice() {
     window.__onVoiceTranscript = null;
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '🎤 Confirm with your voice';
+      btn.innerHTML = iconFor('mic', 'icon-lead') + ' Confirm with your voice';
     }
     wave?.classList.add('idle');
   }
@@ -574,7 +574,7 @@ function updateEnrollUI() {
   const btn = document.getElementById('btn-voice-enroll-record');
   if (btn) {
     btn.disabled = state.voiceEnroll.recording || step >= ENROLL_SAMPLES || !state.voiceEnroll.challengeId;
-    btn.textContent = step >= ENROLL_SAMPLES ? 'Saving…' : `🎤 Record sample ${step + 1} of ${ENROLL_SAMPLES}`;
+    btn.textContent = step >= ENROLL_SAMPLES ? 'Saving…' : `${iconFor('mic', 'icon-lead')} Record sample ${step + 1} of ${ENROLL_SAMPLES}`;
   }
 }
 
@@ -834,7 +834,7 @@ function renderPlanList() {
           ${p.extras.length ? `<div class="rc-plan-extras">${p.extras.map(escapeHtml).join(' · ')}</div>` : ''}
           ${p.detail ? `<div class="rc-plan-detail">${escapeHtml(p.detail)}</div>` : ''}
         </div>
-        <span class="rc-plan-go">›</span>
+        <span class="rc-plan-go"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-chevronRight"></use></svg></span>
       </button>`).join('');
   list.querySelectorAll('.rc-plan').forEach(b =>
     b.addEventListener('click', () => payForPlan(b.dataset.plan)));
@@ -947,13 +947,13 @@ async function checkRechargeReminders() {
 
     el.className = `rc-reminder ${r.expired ? 'expired' : ''}`;
     el.innerHTML = isBill
-      ? `<span class="rc-rem-icon">${r.expired ? '⚠️' : '💡'}</span>
+      ? `<span class="rc-rem-icon">${iconFor(r.expired ? 'alert' : 'bulb')}</span>
          <div class="rc-rem-text">
            <div class="rc-rem-title">${escapeHtml(r.board_name)} bill ${escapeHtml(when)}</div>
            <div class="rc-rem-sub">${escapeHtml(r.consumer_no)} · ${escapeHtml(r.period)} · ₹${formatAmount(r.amount)}</div>
          </div>
          <button class="rc-rem-btn" id="rc-rem-go">Pay</button>`
-      : `<span class="rc-rem-icon">${r.expired ? '⚠️' : '⏳'}</span>
+      : `<span class="rc-rem-icon">${iconFor(r.expired ? 'alert' : 'hourglass')}</span>
          <div class="rc-rem-text">
            <div class="rc-rem-title">${escapeHtml(r.operator_name || '')} plan ${escapeHtml(when)}</div>
            <div class="rc-rem-sub">+91 ${escapeHtml((r.phone || '').replace('+91', ''))} · last ₹${r.price}${r.data ? ` · ${escapeHtml(r.data)}` : ''}</div>
@@ -1416,11 +1416,11 @@ function updateProcessingUI(data) {
     routing:         'NPCI Switch routing request…',
     debiting:        'Payer Bank: verifying PIN & checking balance…',
     crediting:       'Payee Bank: processing credit…',
-    success:         'All hops confirmed ✓ — awaiting settlement',
-    settled:         'Transaction settled ✓',
+    success:         'All hops confirmed — awaiting settlement',
+    settled:         'Transaction settled',
     failed:          'Transaction failed',
     timeout:         'Service timed out — checking status…',
-    reversed:        'Payment failed — amount refunded ✓',
+    reversed:        'Payment failed — amount refunded',
     partial_failure: 'Failed, and the refund did not go through — under investigation',
   };
   document.getElementById('processing-status-text').textContent =
@@ -1551,7 +1551,7 @@ function showFailed(reason, txnId, stage) {
 // ── History ───────────────────────────────────────────────────────────────────
 async function loadHistory(filter = 'all') {
   const container = document.getElementById('history-txn-list');
-  container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">⏳</div>Loading…</div>';
+  container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">' + iconFor('hourglass') + '</div>Loading…</div>';
 
   // Always filter to the currently logged-in user's VPA
   const vpa = state.user.vpa;
@@ -1571,7 +1571,7 @@ async function loadHistory(filter = 'all') {
 
     container.innerHTML = txns.length ? '' : `
       <div class="txn-empty">
-        <div class="txn-empty-icon">📭</div>
+        <div class="txn-empty-icon">${iconFor('inbox')}</div>
         No ${filter !== 'all' ? filter : ''} transactions yet.
       </div>`;
 
@@ -1581,18 +1581,32 @@ async function loadHistory(filter = 'all') {
       .filter(t => !vpa || t.payer_vpa === vpa || t.payee_vpa === vpa)
       .filter(t => filter === 'all' || t.status === filter);
     container.innerHTML = txns.length ? '' :
-      '<div class="txn-empty"><div class="txn-empty-icon">⚡</div>Services offline. Local history shown.</div>';
+      '<div class="txn-empty"><div class="txn-empty-icon">' + iconFor('bolt') + '</div>Services offline. Local history shown.</div>';
     txns.forEach(t => container.appendChild(buildTxnItem(t)));
   }
+}
+
+/**
+ * Classify a transaction by what it means to the payer rather than by ledger
+ * terminology: money out, money returned, still in flight, or failed. The row's
+ * colour follows this, so a successful payment is never painted in the failure
+ * red, and a failed one is never painted success green.
+ */
+function txnTone(status) {
+  if (['success', 'settled'].includes(status))                   return 'out';
+  if (['reversed', 'credited'].includes(status))                 return 'back';
+  if (['failed', 'timeout', 'partial_failure'].includes(status)) return 'failed';
+  return 'pending';   // initiated, or debited but not yet settled
 }
 
 function buildTxnItem(t) {
   const div = document.createElement('div');
   div.className = 'txn-item';
+  const tone = txnTone(t.status);
 
   const icon = document.createElement('div');
-  icon.className = `txn-icon ${['success','settled','debited','credited'].includes(t.status) ? 'debit' : ['failed','reversed'].includes(t.status) ? 'debit' : 'pending'}`;
-  icon.textContent = t.payee_icon || getMerchantIcon(t.payee_vpa || t.payee_name) || '💳';
+  icon.className = `txn-icon ${tone}`;
+  icon.innerHTML = iconFor(t.payee_icon || getMerchantIcon(t.payee_vpa || t.payee_name) || 'card');
 
   const info = document.createElement('div');
   info.className = 'txn-info';
@@ -1602,9 +1616,11 @@ function buildTxnItem(t) {
   `;
 
   const amount = document.createElement('div');
-  const isSuccess = ['success','settled','debited'].includes(t.status);
-  amount.className = `txn-amount ${isSuccess ? 'debit' : 'credit'}`;
-  amount.textContent = `${isSuccess ? '−' : '+'}₹${formatAmount(t.amount)}`;
+  amount.className = `txn-amount ${tone}`;
+  // A failed payment moved no money, so it carries no sign; money out is "−"
+  // and money returned is "+".
+  const sign = tone === 'out' || tone === 'pending' ? '−' : tone === 'back' ? '+' : '';
+  amount.textContent = `${sign}₹${formatAmount(t.amount)}`;
 
   div.append(icon, info, amount);
   return div;
@@ -1619,7 +1635,7 @@ function updateHomeTxnList() {
     .slice(0, 5);
 
   if (!recent.length) {
-    container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">💳</div>No transactions yet. Try Voice Pay!</div>';
+    container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">' + iconFor('card') + '</div>No transactions yet. Try Voice Pay!</div>';
     return;
   }
 
@@ -1639,14 +1655,14 @@ async function loadSettlements() {
     document.getElementById('settlement-cycle-count').textContent = `Cycle #${data.total_cycles}`;
 
     if (!data.cycles.length) {
-      container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">⏳</div>Waiting for first settlement cycle (every 30s)…</div>';
+      container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">' + iconFor('hourglass') + '</div>Waiting for first settlement cycle (every 30s)…</div>';
       return;
     }
 
     container.innerHTML = '';
     data.cycles.forEach(c => container.appendChild(buildCycleCard(c)));
   } catch {
-    container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">⚡</div>Settlement service offline.</div>';
+    container.innerHTML = '<div class="txn-empty"><div class="txn-empty-icon">' + iconFor('bolt') + '</div>Settlement service offline.</div>';
   }
 }
 
@@ -1718,11 +1734,11 @@ async function resetSystem() {
   state.pin       = '';
 
   document.getElementById('home-txn-list').innerHTML =
-    '<div class="txn-empty"><div class="txn-empty-icon">💳</div>No transactions yet. Try Voice Pay!</div>';
+    '<div class="txn-empty"><div class="txn-empty-icon">' + iconFor('card') + '</div>No transactions yet. Try Voice Pay!</div>';
 
   await refreshBalance();
   showScreen('home');
-  alert('✅ System reset! All balances restored.');
+  alert('System reset! All balances restored.');
 }
 
 // ── Confetti ──────────────────────────────────────────────────────────────────
@@ -1765,15 +1781,15 @@ function formatRelativeTime(ts) {
 
 function formatTxnStatus(s) {
   const map = {
-    success:         '✅ Success',
-    settled:         '✅ Settled',
-    debited:         '⏳ Debited (pending settlement)',
-    credited:        '⏳ Credited (pending settlement)',
-    failed:          '❌ Failed',
-    timeout:         '⏰ Timed out',
-    initiated:       '🔄 Initiated',
-    reversed:        '↩️ Refunded',
-    partial_failure: '⚠️ Stuck — needs recon',
+    success:         'Success',
+    settled:         'Settled',
+    debited:         'Debited (pending settlement)',
+    credited:        'Credited (pending settlement)',
+    failed:          'Failed',
+    timeout:         'Timed out',
+    initiated:       'Initiated',
+    reversed:        'Refunded',
+    partial_failure: 'Stuck — needs recon',
   };
   return map[s] || s;
 }
@@ -2228,11 +2244,11 @@ document.addEventListener('DOMContentLoaded', () => {
       onboardState.name = name;
       onboardState.identifier = identifier;
 
-      statusDiv.innerHTML = '<span style="color:var(--blue);">📡 Sending encrypted SIM / SMS binding packet…</span>';
+      statusDiv.innerHTML = '<span style="color:var(--blue);">' + iconFor('radio') + ' Sending encrypted SIM / SMS binding packet…</span>';
       btnVerifyBinding.disabled = true;
 
       setTimeout(async () => {
-        statusDiv.innerHTML = '<span style="color:var(--green);">✓ Device Bound! Querying NPCI Central Registry…</span>';
+        statusDiv.innerHTML = '<span style="color:var(--green);">' + iconFor('check') + ' Device Bound! Querying NPCI Central Registry…</span>';
         try {
           const res = await fetch(`${API.switch}/npci/discover-accounts?identifier=${encodeURIComponent(identifier)}`);
           if (!res.ok) throw new Error('Failed to query NPCI');
@@ -2261,14 +2277,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const card = document.createElement('div');
       card.className = `discovered-bank-card ${idx === 0 ? 'selected' : ''}`;
       card.innerHTML = `
-        <div class="bank-avatar">${acc.icon || '🏦'}</div>
+        <div class="bank-avatar">${iconFor(acc.icon || 'bank')}</div>
         <div class="bank-info">
           <div class="bank-name">${acc.bank_name}</div>
           <div class="bank-meta">${acc.account_type} • A/C ${acc.account_mask}</div>
           <div class="bank-meta" style="font-size:11px;color:var(--text-3);">IFSC: ${acc.ifsc} • ${acc.branch}</div>
           <div class="bank-balance-tag">Available: ₹${formatAmount(acc.default_balance)}</div>
         </div>
-        <div class="bank-check">✓</div>
+        <div class="bank-check">${iconFor('check')}</div>
       `;
       card.addEventListener('click', () => {
         document.querySelectorAll('.discovered-bank-card').forEach(c => c.classList.remove('selected'));
@@ -2381,7 +2397,7 @@ document.addEventListener('DOMContentLoaded', () => {
           console.warn('Biometric skipped or cancelled during onboarding:', bioErr);
         }
 
-        statusDiv.innerHTML = '<span style="color:var(--green);">🎉 Account linked successfully! Opening dashboard…</span>';
+        statusDiv.innerHTML = '<span style="color:var(--green);">' + iconFor('checkCircle') + ' Account linked successfully! Opening dashboard…</span>';
 
         // 3. Bind the new account to this device, then finish login
         rememberDeviceAccount(onboardState.chosenVpa, onboardState.name, onboardState.identifier);

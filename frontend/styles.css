@@ -1,8 +1,10 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   Voice UPI Simulator — GPay/Slice Style Dark Mobile UI
+   Sable — voice-first payments UI
+   Aurora + Liquid Glass over an OLED-deep base. Theme tokens live in the theme
+   block; the motion + accessibility layer is at the end of this file.
    ───────────────────────────────────────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
 
 /* ── Reset & Root ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -16,15 +18,15 @@
   --border:       rgba(255,255,255,0.08);
   --border2:      rgba(255,255,255,0.12);
 
-  --blue:         #4D8EFF;
-  --blue-dim:     rgba(77,142,255,0.15);
-  --blue-glow:    rgba(77,142,255,0.35);
+  --blue:         #6D5BF5;
+  --blue-dim:     rgba(109,91,245,0.15);
+  --blue-glow:    rgba(109,91,245,0.35);
   --green:        #00D084;
   --green-dim:    rgba(0,208,132,0.12);
   --green-glow:   rgba(0,208,132,0.4);
-  --red:          #FF3D57;
-  --red-dim:      rgba(255,61,87,0.12);
-  --red-glow:     rgba(255,61,87,0.4);
+  --red:          #FF6B6B;
+  --red-dim:      rgba(255,107,107,0.12);
+  --red-glow:     rgba(255,107,107,0.4);
   --amber:        #FFB300;
   --amber-dim:    rgba(255,179,0,0.12);
   --purple:       #A78BFA;
@@ -59,7 +61,7 @@ html, body {
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(77,142,255,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(109,91,245,0.08) 0%, transparent 60%),
     radial-gradient(ellipse 60% 80% at 80% 60%, rgba(0,208,132,0.06) 0%, transparent 60%),
     var(--bg);
   gap: 48px;
@@ -78,7 +80,7 @@ html, body {
   position: relative;
   box-shadow:
     0 0 0 1px rgba(255,255,255,0.08),
-    0 0 60px rgba(77,142,255,0.15),
+    0 0 60px rgba(109,91,245,0.15),
     0 40px 120px rgba(0,0,0,0.9),
     inset 0 1px 0 rgba(255,255,255,0.12);
   flex-shrink: 0;
@@ -113,7 +115,7 @@ html, body {
   position: absolute;
   top: 2px; left: 2px;
   width: 4px; height: 4px;
-  background: rgba(77,142,255,0.5);
+  background: rgba(109,91,245,0.5);
   border-radius: 50%;
 }
 
@@ -155,12 +157,12 @@ html, body {
   border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   font-size: 16px;
-  box-shadow: 0 4px 16px rgba(77,142,255,0.4);
+  box-shadow: 0 4px 16px rgba(109,91,245,0.4);
 }
 .header-avatar {
   width: 36px; height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #4D8EFF, #7C3AED);
+  background: linear-gradient(135deg, #6D5BF5, #7C3AED);
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 700;
   cursor: pointer;
@@ -234,15 +236,15 @@ html, body {
   border-radius: var(--radius-lg);
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(77,142,255,0.2);
-  box-shadow: 0 8px 40px rgba(77,142,255,0.15);
+  border: 1px solid rgba(109,91,245,0.2);
+  box-shadow: 0 8px 40px rgba(109,91,245,0.15);
 }
 .balance-card::before {
   content: '';
   position: absolute;
   top: -40px; right: -40px;
   width: 180px; height: 180px;
-  background: radial-gradient(circle, rgba(77,142,255,0.15) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(109,91,245,0.15) 0%, transparent 70%);
   border-radius: 50%;
 }
 .balance-card::after {
@@ -420,15 +422,18 @@ html, body {
   font-size: 20px;
   flex-shrink: 0;
 }
-.txn-icon.debit  { background: var(--red-dim);   }
-.txn-icon.credit { background: var(--green-dim);  }
-.txn-icon.pending{ background: var(--amber-dim);  }
+.txn-icon.out     { background: rgba(255,255,255,.05); }
+.txn-icon.back    { background: var(--green-dim);  }
+.txn-icon.pending { background: var(--amber-dim);  }
+.txn-icon.failed  { background: var(--red-dim);    }
 .txn-info { flex: 1; min-width: 0; }
 .txn-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .txn-meta { font-size: 11px; color: var(--text-3); }
 .txn-amount { font-size: 16px; font-weight: 700; flex-shrink: 0; }
-.txn-amount.debit  { color: var(--red);   }
-.txn-amount.credit { color: var(--green); }
+.txn-amount.out     { color: var(--text);   }   /* money out is normal, not an error */
+.txn-amount.back    { color: var(--green);  }
+.txn-amount.pending { color: var(--amber);  }
+.txn-amount.failed  { color: var(--red);    }
 
 .txn-empty {
   text-align: center;
@@ -509,9 +514,9 @@ html, body {
   border: 2px solid transparent;
   animation: voiceRingPulse 2s ease-in-out infinite;
 }
-.voice-ring-1 { width: 200px; height: 200px; border-color: rgba(77,142,255,0.15); animation-delay: 0s; }
-.voice-ring-2 { width: 160px; height: 160px; border-color: rgba(77,142,255,0.25); animation-delay: 0.4s; }
-.voice-ring-3 { width: 120px; height: 120px; border-color: rgba(77,142,255,0.35); animation-delay: 0.8s; }
+.voice-ring-1 { width: 200px; height: 200px; border-color: rgba(109,91,245,0.15); animation-delay: 0s; }
+.voice-ring-2 { width: 160px; height: 160px; border-color: rgba(109,91,245,0.25); animation-delay: 0.4s; }
+.voice-ring-3 { width: 120px; height: 120px; border-color: rgba(109,91,245,0.35); animation-delay: 0.8s; }
 
 @keyframes voiceRingPulse {
   0%, 100% { transform: scale(1);    opacity: 0.6; }
@@ -532,13 +537,13 @@ html, body {
   animation: micBreathing 2.5s ease-in-out infinite;
 }
 @keyframes micBreathing {
-  0%, 100% { box-shadow: 0 8px 32px rgba(77,142,255,0.4); }
-  50%       { box-shadow: 0 8px 48px rgba(77,142,255,0.7); }
+  0%, 100% { box-shadow: 0 8px 32px rgba(109,91,245,0.4); }
+  50%       { box-shadow: 0 8px 48px rgba(109,91,245,0.7); }
 }
 .voice-mic-btn.listening { animation: micListening 0.5s ease-in-out infinite alternate; }
 @keyframes micListening {
-  from { transform: scale(1);    box-shadow: 0 8px 32px rgba(77,142,255,0.4); }
-  to   { transform: scale(1.05); box-shadow: 0 12px 48px rgba(77,142,255,0.8); }
+  from { transform: scale(1);    box-shadow: 0 8px 32px rgba(109,91,245,0.4); }
+  to   { transform: scale(1.05); box-shadow: 0 12px 48px rgba(109,91,245,0.8); }
 }
 .voice-mic-btn.idle { background: linear-gradient(135deg, #333, #555); animation: none; box-shadow: none; }
 
@@ -594,7 +599,7 @@ html, body {
   padding: 12px 20px;
   background: var(--blue-dim);
   border-radius: var(--radius);
-  border: 1px solid rgba(77,142,255,0.2);
+  border: 1px solid rgba(109,91,245,0.2);
   width: 100%;
   margin-top: 16px;
   line-height: 1.4;
@@ -871,7 +876,7 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   font-size: 28px;
   margin-bottom: 20px;
-  border: 1px solid rgba(77,142,255,0.2);
+  border: 1px solid rgba(109,91,245,0.2);
 }
 .pin-title    { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
 .pin-subtitle { font-size: 13px; color: var(--text-3); margin-bottom: 32px; text-align: center; }
@@ -1018,14 +1023,14 @@ html, body {
 .hop-node.active .hop-node-circle {
   border-color: var(--blue);
   background: var(--blue-dim);
-  box-shadow: 0 0 0 6px rgba(77,142,255,0.15), 0 0 20px var(--blue-glow);
+  box-shadow: 0 0 0 6px rgba(109,91,245,0.15), 0 0 20px var(--blue-glow);
   animation: hopPulse 1s ease-in-out infinite;
 }
 .hop-node.active .hop-node-label { color: var(--blue); }
 
 @keyframes hopPulse {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(77,142,255,0.15), 0 0 16px rgba(77,142,255,0.35); }
-  50%       { box-shadow: 0 0 0 10px rgba(77,142,255,0.08), 0 0 28px rgba(77,142,255,0.55); }
+  0%, 100% { box-shadow: 0 0 0 4px rgba(109,91,245,0.15), 0 0 16px rgba(109,91,245,0.35); }
+  50%       { box-shadow: 0 0 0 10px rgba(109,91,245,0.08), 0 0 28px rgba(109,91,245,0.55); }
 }
 
 .hop-node.completed .hop-node-circle {
@@ -1039,7 +1044,7 @@ html, body {
 .hop-node.failed .hop-node-circle {
   border-color: var(--red);
   background: var(--red-dim);
-  box-shadow: 0 0 16px rgba(255,61,87,0.3);
+  box-shadow: 0 0 16px rgba(255,107,107,0.3);
 }
 .hop-node.failed .hop-node-label { color: var(--red); }
 
@@ -1143,7 +1148,7 @@ html, body {
 .result-icon-wrap.failed {
   background: var(--red-dim);
   border: 2px solid var(--red);
-  box-shadow: 0 0 0 16px rgba(255,61,87,0.06), 0 0 48px var(--red-glow);
+  box-shadow: 0 0 0 16px rgba(255,107,107,0.06), 0 0 48px var(--red-glow);
   animation: failShake 0.4s ease;
 }
 
@@ -1201,7 +1206,7 @@ html, body {
 
 .error-reason {
   background: var(--red-dim);
-  border: 1px solid rgba(255,61,87,0.2);
+  border: 1px solid rgba(255,107,107,0.2);
   border-radius: var(--radius-sm);
   padding: 14px 18px;
   font-size: 14px;
@@ -1326,7 +1331,7 @@ html, body {
   border-color: rgba(0,208,132,0.3);
   box-shadow: 0 0 12px rgba(0,208,132,0.08);
 }
-.arch-service.dead { border-color: rgba(255,61,87,0.3); }
+.arch-service.dead { border-color: rgba(255,107,107,0.3); }
 .arch-service.pending { border-color: rgba(255,179,0,0.3); }
 .arch-svc-dot {
   width: 10px; height: 10px;
@@ -1420,8 +1425,8 @@ html, body {
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background: linear-gradient(135deg, rgba(77,142,255,0.12), rgba(167,139,250,0.10));
-  border: 1px solid rgba(77,142,255,0.25);
+  background: linear-gradient(135deg, rgba(109,91,245,0.12), rgba(167,139,250,0.10));
+  border: 1px solid rgba(109,91,245,0.25);
   border-radius: var(--radius-sm);
   color: var(--text);
   cursor: pointer;
@@ -1429,7 +1434,7 @@ html, body {
   transition: all 0.2s ease;
 }
 .onboard-action-btn:hover {
-  background: linear-gradient(135deg, rgba(77,142,255,0.2), rgba(167,139,250,0.18));
+  background: linear-gradient(135deg, rgba(109,91,245,0.2), rgba(167,139,250,0.18));
   border-color: var(--blue);
   transform: translateY(-1px);
 }
@@ -1762,40 +1767,263 @@ html, body {
   margin-top: 2px;
 }
 
-/* ── Premium graphite theme ─────────────────────────────────────────────── */
+/* ── Sable — premium theme ─────────────────────────────────────────────────
+   Direction: Aurora UI over an OLED-deep base, Liquid Glass on navigation and
+   controls, and the Fintech colour split — a cool tech accent (violet →
+   indigo) for action, a warm gold reserved for money.
+
+   Roles, not colour names:
+     --accent*   actions: buttons, mic, active nav, focus glow
+     --gold*     money moments only: the balance figure, premium marks
+     --green / --red / --amber      status: success / failure / in flight
+     --brand     the wordmark mark
+
+   The legacy --blue* names survive as aliases of --accent* because ~56 older
+   rules reference them; new rules should use --accent*. --red is a coral that
+   the warm brand gradient deliberately does not match, so a failure never
+   reads as the logo.
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg:#090909; --surface:#101010; --surface2:#181818; --card:#191919;
-  --card-hover:#232323; --border:rgba(255,255,255,.09); --border2:rgba(255,255,255,.16);
-  --blue:#e84743; --blue-dim:rgba(232,71,67,.14); --blue-glow:rgba(232,71,67,.3);
-  --green:#8cd68b; --green-dim:rgba(140,214,139,.12); --green-glow:rgba(140,214,139,.35);
-  --red:#ee6b68; --amber:#e6c16d; --text:#f5f2ed; --text-2:rgba(245,242,237,.66);
-  --text-3:rgba(245,242,237,.40); --font:'DM Sans', system-ui, sans-serif;
+  /* base — obsidian with a blue-violet cast, OLED friendly */
+  --bg:#08090E; --surface:#0E1017; --surface2:#14161F;
+  --card:#151824; --card-hover:#1C2030;
+  --border:rgba(255,255,255,.07); --border2:rgba(255,255,255,.13);
+  --hairline:rgba(255,255,255,.10);
+  --glass:rgba(255,255,255,.045); --glass-strong:rgba(255,255,255,.075);
+  --highlight:inset 0 1px 0 rgba(255,255,255,.07);
+
+  --text:#F2F4F8; --text-2:#9EA6B8; --text-3:#7E8798;
+  --font:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-display:'Outfit','Inter',system-ui,sans-serif;
+
+  --accent:#6D5BF5; --accent-2:#9B7BFF;
+  --accent-dim:rgba(109,91,245,.16); --accent-glow:rgba(109,91,245,.42);
+  --blue:var(--accent); --blue-dim:var(--accent-dim); --blue-glow:var(--accent-glow);
+
+  --gold:#F5B74E; --gold-2:#FFD79A; --gold-dim:rgba(245,183,78,.14);
+
+  --green:#5FD39A; --green-dim:rgba(95,211,154,.13); --green-glow:rgba(95,211,154,.42);
+  --red:#FF6B6B; --red-dim:rgba(255,107,107,.13);
+  --amber:#E9A23B; --amber-dim:rgba(233,162,59,.14);
+  --brand:#F2544B; --brand-2:#FF9558;
+
+  --shadow-sm:0 2px 10px rgba(0,0,0,.5);
+  --shadow-md:0 14px 34px -12px rgba(0,0,0,.75);
+  --shadow-lg:0 34px 80px -26px rgba(0,0,0,.92);
+
+  /* Motion is decided once here; every transition below draws from these
+     tokens. Timing values come from the skill's motion tiers, translated from
+     GSAP easings to cubic-beziers: power2.out, back.out(1.4), expo.inOut. */
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --ease-io:cubic-bezier(.87,0,.13,1);
+  --t-fast:150ms; --t-base:260ms; --t-slow:440ms;
 }
-.desktop-bg { background:radial-gradient(ellipse 50% 65% at 50% 45%,#252525 0%,#090909 68%); gap:0; }
-.phone-frame { background:#101010; border-radius:48px; box-shadow:0 0 0 1px rgba(255,255,255,.14),0 0 70px rgba(0,0,0,.55),0 40px 120px #000,inset 0 1px 0 rgba(255,255,255,.12); }
+
+/* ── The room the app sits in ───────────────────────────────────────────── */
+.desktop-bg {
+  background:
+    radial-gradient(58% 48% at 20% 6%, rgba(109,91,245,.11) 0%, transparent 62%),
+    radial-gradient(46% 40% at 88% 86%, rgba(245,183,78,.07) 0%, transparent 64%),
+    radial-gradient(ellipse 62% 72% at 50% 46%, #15171F 0%, #07080C 72%);
+  gap:0;
+}
+.phone-frame {
+  background:var(--bg);
+  border-radius:48px;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.10),
+    0 0 0 11px #0B0C12,
+    0 0 0 12px rgba(255,255,255,.06),
+    0 60px 150px -30px #000,
+    inset 0 1px 0 rgba(255,255,255,.10);
+}
+
+/* ── Aurora backdrop + film grain ─────────────────────────────────────────
+   Painted behind every screen (screens are transparent), so the whole app
+   drifts on one slow gradient. Transform-only, so it stays on the compositor;
+   the animation is switched off entirely under reduced motion. */
+.screen-container::before {
+  content:''; position:absolute; inset:-25%; pointer-events:none;
+  background:
+    radial-gradient(38% 30% at 18% 10%, rgba(109,91,245,.30), transparent 66%),
+    radial-gradient(32% 24% at 88% 24%, rgba(245,183,78,.13), transparent 64%),
+    radial-gradient(46% 32% at 62% 98%, rgba(109,91,245,.20), transparent 68%);
+  filter:blur(30px) saturate(1.15);
+  animation:aurora-drift 26s var(--ease-io) infinite alternate;
+  will-change:transform;
+}
+@keyframes aurora-drift { to { transform:translate3d(-5%,3%,0) scale(1.16); } }
+
+/* Film grain. 3% over dark content is invisible as texture but stops the large
+   gradients from banding on 8-bit panels. */
+.screen-container::after {
+  content:''; position:absolute; inset:0; pointer-events:none; opacity:.03;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
 .app-header { padding:10px 22px 16px; }
-.app-logo { gap:5px; font-family:'Manrope',sans-serif; font-size:21px; font-weight:800; letter-spacing:-1.5px; }
-.logo-icon { width:24px; height:24px; background:#e84743; border-radius:8px; gap:2px; box-shadow:none; }
-.logo-icon span { width:3px; border-radius:3px; background:#090909; transform:rotate(34deg); }
-.logo-icon span:nth-child(1) { height:8px; }.logo-icon span:nth-child(2) { height:13px; }.logo-icon span:nth-child(3) { height:18px; }
-.logo-dot { color:var(--blue); }
-.header-avatar { background:#e7e1d7; color:#141414; border-color:#302f2e; }
-.home-welcome { display:flex; align-items:flex-end; justify-content:space-between; padding:4px 22px 20px; }
-.home-eyebrow { font-size:10px; letter-spacing:1.6px; color:var(--text-3); font-weight:700; margin-bottom:8px; }
-.home-welcome h1 { font-family:'Manrope',sans-serif; font-size:25px; line-height:1.12; letter-spacing:-1.2px; font-weight:700; }
-.home-welcome h1 em { color:#a8a8a8; font-style:normal; font-weight:500; }
-.home-security { font-size:9px; letter-spacing:1px; color:#9c9c9c; padding-bottom:4px; white-space:nowrap; }
-.home-security span { display:inline-block; width:6px; height:6px; background:#8cd68b; border-radius:50%; box-shadow:0 0 9px #8cd68b; margin-right:4px; }
-.balance-card { margin:0 18px 18px; padding:25px 24px; background:linear-gradient(128deg,#2b2a29 0%,#1a1a1a 64%,#111 100%); border-radius:24px; border-color:rgba(255,255,255,.12); box-shadow:0 16px 38px rgba(0,0,0,.28); }
-.balance-card::before { background:radial-gradient(circle,rgba(232,71,67,.16) 0%,transparent 70%); }.balance-card::after { background:radial-gradient(circle,rgba(255,255,255,.07) 0%,transparent 70%); }
-.balance-label { letter-spacing:1px; }.quick-actions { gap:10px; padding:0 18px 25px; }.action-icon { background:#1b1b1b; border-radius:18px; }
-.action-btn.voice-main .action-icon { background:#e84743; box-shadow:0 8px 20px rgba(232,71,67,.25); }.action-label { font-size:11px; }
-.section-header { padding:0 22px 12px; }.section-title { font-family:'Manrope',sans-serif; font-weight:700; letter-spacing:-.3px; }.section-link { color:#e6c16d; font-size:12px; font-weight:600; }
-.merchant-chips { gap:12px; padding:0 18px 25px; }.merchant-chip-icon { width:54px; height:54px; background:#1b1b1b; border-radius:18px; }
-.txn-item { background:#171717; border-radius:16px; }.settlement-mini { background:#171717; border-radius:16px; margin:18px; }
-.bottom-nav { background:rgba(16,16,16,.96); }.nav-item.active { color:var(--blue); }
-.pay-now-btn,.primary-btn { background:#e84743; box-shadow:0 10px 24px rgba(232,71,67,.22); }.pay-now-btn:hover,.primary-btn:hover:not(:disabled) { background:#f0534f; }
-.voice-mic-btn { background:#e84743; }.voice-transcript { color:#f5f2ed; background:#1b1b1b; border-color:var(--border); }
+.app-logo {
+  gap:7px; font-family:var(--font-display); font-size:20px;
+  font-weight:600; letter-spacing:-.4px; color:var(--text);
+}
+.logo-icon {
+  width:26px; height:26px; gap:2.5px; border-radius:9px;
+  background:linear-gradient(140deg,var(--brand-2) 0%,var(--brand) 100%);
+  box-shadow:0 6px 16px -4px rgba(242,84,75,.5), var(--highlight);
+}
+.logo-icon span { width:3px; border-radius:3px; background:#120A09; transform:rotate(34deg); }
+.logo-icon span:nth-child(1) { height:8px; }
+.logo-icon span:nth-child(2) { height:13px; }
+.logo-icon span:nth-child(3) { height:18px; }
+.logo-dot { color:var(--brand); }
+.header-avatar {
+  background:linear-gradient(150deg,#F7F2E8,#D6D0C4); color:#14161F;
+  border:1px solid var(--hairline); box-shadow:var(--shadow-sm);
+  transition:transform var(--t-fast) var(--ease-out);
+}
+.header-avatar:active { transform:scale(.94); }
+
+/* Login is the brand's one full-bleed moment, so the header lockup is
+   suppressed there — otherwise the mark appears twice on the same screen. */
+.phone-frame:has(#screen-login.active) .app-header { display:none; }
+
+/* ── Home ──────────────────────────────────────────────────────────────── */
+.home-welcome { display:flex; align-items:flex-end; justify-content:space-between; padding:12px 22px 20px; }
+.home-eyebrow { font-size:10px; letter-spacing:1.8px; color:var(--text-3); font-weight:600; margin-bottom:9px; }
+.home-welcome h1 { font-family:var(--font-display); font-size:26px; line-height:1.12; letter-spacing:-.8px; font-weight:600; }
+.home-welcome h1 em {
+  font-style:normal; font-weight:400;
+  background:linear-gradient(96deg,#FFFFFF 0%,#C9CCFF 56%,#FFD79A 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.home-security { font-size:9px; letter-spacing:1.2px; color:var(--text-3); padding-bottom:5px; white-space:nowrap; font-weight:600; }
+.home-security span {
+  display:inline-block; width:6px; height:6px; background:var(--green);
+  border-radius:50%; box-shadow:0 0 10px var(--green-glow); margin-right:5px;
+  animation:pulse-dot 2.6s var(--ease-io) infinite;
+}
+@keyframes pulse-dot { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.5; transform:scale(.8); } }
+
+/* ── Balance card — the one object allowed to be a hero ────────────────── */
+.balance-card {
+  position:relative; overflow:hidden;
+  margin:0 18px 18px; padding:26px 24px;
+  border-radius:26px; border:1px solid var(--hairline);
+  background:linear-gradient(152deg,#1D2136 0%,#151827 48%,#0E1017 100%);
+  box-shadow:var(--shadow-md), var(--highlight);
+  transition:transform var(--t-base) var(--ease-out), box-shadow var(--t-base) var(--ease-out);
+}
+.balance-card::before {
+  content:''; position:absolute; inset:-45% -28% auto -28%; height:160%; pointer-events:none;
+  background:
+    radial-gradient(44% 44% at 20% 10%, rgba(109,91,245,.45), transparent 62%),
+    radial-gradient(32% 32% at 94% 98%, rgba(245,183,78,.22), transparent 64%);
+  filter:blur(22px);
+}
+.balance-card::after {
+  content:''; position:absolute; top:-10%; bottom:-10%; width:55%; pointer-events:none;
+  background:linear-gradient(100deg, transparent 0%, rgba(255,255,255,.11) 46%, transparent 100%);
+  transform:translateX(-160%) rotate(8deg);
+  animation:sheen 8s 1.6s var(--ease-io) infinite;
+}
+@keyframes sheen {
+  0%   { transform:translateX(-160%) rotate(8deg); }
+  18%  { transform:translateX(280%) rotate(8deg); }
+  100% { transform:translateX(280%) rotate(8deg); }
+}
+.balance-label { letter-spacing:1.6px; font-weight:600; color:var(--text-3); }
+.balance-amount {
+  font-family:var(--font-display); font-weight:600; letter-spacing:-1.6px;
+  color:var(--gold-2); font-variant-numeric:tabular-nums;
+}
+.balance-currency { font-size:20px; font-weight:600; opacity:1; color:var(--gold); }
+.balance-vpa { font-variant-numeric:tabular-nums; }
+.balance-refresh { transition:transform var(--t-base) var(--ease-spring), background var(--t-fast) linear; }
+.balance-refresh:hover { transform:rotate(38deg); }
+
+/* ── Quick actions — glass tiles, the primary one carries the accent ───── */
+.quick-actions { gap:10px; padding:0 18px 25px; }
+.action-icon {
+  background:linear-gradient(160deg,var(--glass-strong),var(--glass));
+  border:1px solid var(--border); border-radius:19px;
+  box-shadow:var(--shadow-sm), var(--highlight);
+  transition:transform var(--t-fast) var(--ease-spring), border-color var(--t-fast) linear, box-shadow var(--t-fast) linear;
+}
+.action-btn:hover .action-icon { border-color:var(--border2); }
+.action-btn:active .action-icon { transform:scale(.93); }
+.action-btn.voice-main .action-icon {
+  background:linear-gradient(150deg,var(--accent-2) 0%,var(--accent) 62%,#4B3BE0 100%);
+  border-color:transparent;
+  box-shadow:0 12px 28px -8px var(--accent-glow), var(--highlight);
+}
+.action-label { font-size:11px; font-weight:500; }
+.action-btn.voice-main .action-label { color:var(--text); font-weight:600; }
+
+/* ── Sections, chips, rows ─────────────────────────────────────────────── */
+.section-header { padding:0 22px 12px; }
+.section-title { font-family:var(--font-display); font-weight:600; letter-spacing:-.2px; }
+.section-link { color:var(--gold); font-size:12px; font-weight:600; }
+.merchant-chips { gap:12px; padding:0 18px 25px; }
+.merchant-chip-icon {
+  width:54px; height:54px; border-radius:19px;
+  background:linear-gradient(160deg,var(--glass-strong),var(--glass));
+  border:1px solid var(--border);
+  box-shadow:var(--shadow-sm), var(--highlight);
+  transition:transform var(--t-fast) var(--ease-spring), border-color var(--t-fast) linear;
+}
+.merchant-chip:hover .merchant-chip-icon { border-color:var(--border2); }
+.merchant-chip:active .merchant-chip-icon { transform:scale(.93); }
+.txn-item {
+  background:linear-gradient(160deg,rgba(255,255,255,.038),rgba(255,255,255,.012));
+  border:1px solid var(--border); border-radius:18px;
+  transition:transform var(--t-fast) var(--ease-out), border-color var(--t-fast) linear;
+}
+.txn-item:hover { border-color:var(--border2); }
+.settlement-mini {
+  background:linear-gradient(160deg,rgba(255,255,255,.038),rgba(255,255,255,.012));
+  border:1px solid var(--border); border-radius:18px; margin:18px;
+}
+
+/* ── Bottom navigation — Liquid Glass ─────────────────────────────────── */
+.bottom-nav {
+  background:rgba(11,13,20,.72);
+  backdrop-filter:blur(26px) saturate(1.5);
+  -webkit-backdrop-filter:blur(26px) saturate(1.5);
+  border-top:1px solid var(--hairline);
+}
+.nav-item { position:relative; transition:color var(--t-fast) linear, transform var(--t-fast) var(--ease-out); }
+.nav-item:active { transform:scale(.92); }
+.nav-item.active { color:var(--accent-2); }
+.nav-item.active svg { filter:drop-shadow(0 0 8px var(--accent-glow)); }
+.nav-item.active::before {
+  content:''; position:absolute; top:-10px; left:50%; transform:translateX(-50%);
+  width:26px; height:2px; border-radius:0 0 3px 3px;
+  background:linear-gradient(90deg,transparent,var(--accent-2),transparent);
+  box-shadow:0 0 12px var(--accent-glow);
+}
+
+/* ── Buttons — gradient fill, inner highlight, press scale ────────────── */
+.pay-now-btn,.primary-btn {
+  background:linear-gradient(140deg,var(--accent-2) 0%,var(--accent) 58%,#4B3BE0 100%);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 14px 32px -12px var(--accent-glow), var(--highlight);
+  transition:transform var(--t-fast) var(--ease-spring), box-shadow var(--t-base) var(--ease-out), filter var(--t-fast) linear;
+}
+.pay-now-btn:hover,.primary-btn:hover:not(:disabled) {
+  filter:brightness(1.08);
+  box-shadow:0 18px 42px -12px var(--accent-glow), var(--highlight);
+}
+.pay-now-btn:active,.primary-btn:active:not(:disabled) { transform:scale(.975); }
+.voice-mic-btn {
+  background:linear-gradient(150deg,var(--accent-2) 0%,var(--accent) 60%,#4B3BE0 100%);
+  box-shadow:0 16px 40px -12px var(--accent-glow), var(--highlight);
+}
+.voice-transcript {
+  color:var(--text); background:rgba(255,255,255,.04);
+  border:1px solid var(--border); backdrop-filter:blur(12px);
+}
 
 /* Mobile responsive */
 @media (max-width: 800px) {
@@ -1822,11 +2050,12 @@ html, body {
 
 .login-head { margin-bottom: 24px; }
 .login-mark {
-  width: 42px; height: 42px;
-  background: var(--blue);
-  border-radius: 13px;
+  width: 46px; height: 46px;
+  background: linear-gradient(140deg, var(--brand-2) 0%, var(--brand) 100%);
+  border-radius: 15px;
   display: flex; align-items: center; justify-content: center;
   gap: 3px;
+  box-shadow: 0 14px 34px -12px rgba(242,84,75,.6), var(--highlight);
   margin-bottom: 16px;
 }
 .login-mark span { width: 4px; border-radius: 3px; background: #0d0d0d; transform: rotate(34deg); }
@@ -1835,7 +2064,7 @@ html, body {
 .login-mark span:nth-child(3) { height: 23px; }
 
 .login-title {
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--font-display);
   font-size: 27px;
   font-weight: 700;
   letter-spacing: -1.1px;
@@ -2029,7 +2258,7 @@ html, body {
     align-items: center;
     gap: 6px;
     padding: 0 10px 26px;
-    font-family: 'Manrope', sans-serif;
+    font-family: var(--font-display);
     font-size: 21px;
     font-weight: 800;
     letter-spacing: -1.5px;
@@ -2355,8 +2584,8 @@ html, body {
 .rc-mine {
   display: flex; align-items: center; gap: 13px; width: 100%;
   padding: 14px; margin-bottom: 4px; cursor: pointer; text-align: left;
-  background: linear-gradient(135deg, rgba(232,71,67,.13), rgba(232,71,67,.05));
-  border: 1px solid rgba(232,71,67,.3);
+  background: linear-gradient(135deg, rgba(109,91,245,.13), rgba(109,91,245,.05));
+  border: 1px solid rgba(109,91,245,.3);
   border-radius: 16px; font-family: inherit; color: var(--text);
   transition: border-color .18s, transform .15s;
 }
@@ -2506,3 +2735,242 @@ html, body {
 .el-tariff-note {
   font-size: 10.5px; color: var(--text-3); line-height: 1.5; margin-top: 10px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
+   SABLE — MOTION & ACCESSIBILITY LAYER
+
+   Sits on top of the theme above. Two jobs:
+
+     1. Accessibility that was missing: one icon family, one focus ring,
+        WCAG-AA muted text, 44px hit areas, and a reduced-motion switch that
+        actually covers the whole app.
+     2. Motion with a vocabulary: every animation is a shared token, timed from
+        the skill's motion tiers (subtle 150-300ms, standard 300-450ms,
+        complex 500-800ms), transform/opacity only so it stays on the
+        compositor, and every one of them renders its final state instantly
+        under prefers-reduced-motion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Icon family ──────────────────────────────────────────────────────────
+   Sized in `em`, so every container that already sized its emoji with
+   font-size sizes the SVG too. Only the containers that never set a
+   font-size need an explicit size. */
+.icon {
+  width:1em; height:1em; flex:none;
+  fill:none; stroke:currentColor; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round;
+  vertical-align:-0.14em;
+}
+.icon-lead { margin-right:7px; }
+.icon-sprite { position:absolute; width:0; height:0; overflow:hidden; }
+
+.action-icon .icon        { width:22px; height:22px; }
+.merchant-chip-icon .icon { width:24px; height:24px; }
+.hop-node-circle .icon    { width:22px; height:22px; }
+.voice-close-btn .icon    { width:15px; height:15px; }
+.sheet-close .icon        { width:14px; height:14px; }
+.bank-check .icon         { width:17px; height:17px; }
+
+/* ── 2. Visible keyboard focus ──────────────────────────────────────────────
+   The app had 55 buttons and three focus rules, so tabbing was invisible. One
+   rule covers every control, and :focus-visible keeps mouse/touch clean. */
+:root { --focus-ring:#F2F4F8; }
+:where(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline:2px solid var(--focus-ring);
+  outline-offset:2px;
+  border-radius:inherit;
+}
+
+/* ── 3. Motion switch ───────────────────────────────────────────────────────
+   One rule retires every animation and transition below. Anything that would
+   have eased in simply appears in its final state. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+
+/* ── 4. Hit areas + scroll affordance ────────────────────────────────────── */
+.filter-tab {
+  min-height:44px; display:inline-flex;
+  align-items:center; justify-content:center;
+}
+/* The merchant row scrolls horizontally; a soft right edge reads as "more to
+   the right" instead of a chip chopped off mid-icon. */
+.merchant-chips {
+  -webkit-mask-image:linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%);
+  mask-image:linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%);
+}
+
+/* ── 5. Screen transitions ─────────────────────────────────────────────────
+   Route change: expo.inOut-ish slide + fade (complex tier, 500-800ms), then
+   the screen's direct children arrive on a short stagger so the eye is led
+   down the page instead of the whole thing appearing at once. */
+@keyframes screen-in {
+  from { opacity:0; transform:translate3d(0,10px,0) scale(.994); }
+  to   { opacity:1; transform:none; }
+}
+@keyframes rise {
+  from { opacity:0; transform:translate3d(0,14px,0); }
+  to   { opacity:1; transform:none; }
+}
+.screen { animation:screen-in var(--t-slow) var(--ease-io) both; }
+.screen.active > * { animation:rise 420ms var(--ease-out) both; }
+.screen.active > *:nth-child(2)  { animation-delay:45ms; }
+.screen.active > *:nth-child(3)  { animation-delay:90ms; }
+.screen.active > *:nth-child(4)  { animation-delay:135ms; }
+.screen.active > *:nth-child(5)  { animation-delay:180ms; }
+.screen.active > *:nth-child(6)  { animation-delay:215ms; }
+.screen.active > *:nth-child(7)  { animation-delay:250ms; }
+.screen.active > *:nth-child(8)  { animation-delay:285ms; }
+.screen.active > *:nth-child(n+9){ animation-delay:310ms; }
+
+/* ── 6. Lists arrive on a wave (standard tier, 300-450ms, back.out) ─────── */
+.txn-list > .txn-item, #settlement-list > * {
+  animation:rise 400ms var(--ease-spring) both;
+}
+.txn-list > .txn-item:nth-child(2), #settlement-list > *:nth-child(2) { animation-delay:50ms; }
+.txn-list > .txn-item:nth-child(3), #settlement-list > *:nth-child(3) { animation-delay:100ms; }
+.txn-list > .txn-item:nth-child(4), #settlement-list > *:nth-child(4) { animation-delay:150ms; }
+.txn-list > .txn-item:nth-child(5), #settlement-list > *:nth-child(5) { animation-delay:200ms; }
+.txn-list > .txn-item:nth-child(6), #settlement-list > *:nth-child(6) { animation-delay:250ms; }
+.txn-list > .txn-item:nth-child(n+7), #settlement-list > *:nth-child(n+7) { animation-delay:290ms; }
+
+/* ── 7. Press feedback ─────────────────────────────────────────────────────
+   A press must answer within 80-150ms. The ::after brighten always ships (it
+   works even with JS disabled); animations.js adds a pointer-positioned ripple
+   on top of it. */
+.action-btn, .primary-btn, .pay-now-btn, .nav-item, .merchant-chip, .result-btn {
+  position:relative; overflow:hidden;
+}
+.action-btn::after, .primary-btn::after, .pay-now-btn::after,
+.nav-item::after, .merchant-chip::after, .result-btn::after {
+  content:''; position:absolute; inset:0; pointer-events:none; opacity:0;
+  background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.18), transparent 62%);
+  transition:opacity var(--t-fast) linear;
+}
+.action-btn:active::after, .primary-btn:active::after, .pay-now-btn:active::after,
+.nav-item:active::after, .merchant-chip:active::after, .result-btn:active::after { opacity:1; }
+
+.ripple {
+  position:absolute; border-radius:50%; pointer-events:none;
+  background:radial-gradient(circle, rgba(255,255,255,.34), rgba(255,255,255,0) 70%);
+  transform:scale(0); opacity:.9;
+  animation:ripple-out 620ms var(--ease-out) forwards;
+}
+@keyframes ripple-out { to { transform:scale(1); opacity:0; } }
+
+/* ── 8. Loading ────────────────────────────────────────────────────────────
+   Shimmer instead of a static "Loading…", so the wait has a shape. */
+.skel {
+  border-radius:12px; min-height:14px;
+  background:linear-gradient(100deg, rgba(255,255,255,.05) 20%, rgba(255,255,255,.11) 38%, rgba(255,255,255,.05) 56%);
+  background-size:220% 100%;
+  animation:shimmer 1.5s linear infinite;
+}
+.skel-row { display:flex; align-items:center; gap:12px; padding:12px 14px; }
+.skel-circle { width:44px; height:44px; border-radius:14px; flex:none; }
+.skel-lines { flex:1; display:flex; flex-direction:column; gap:8px; }
+.skel-lines .skel { height:11px; }
+.skel-lines .skel:last-child { width:42%; height:9px; }
+@keyframes shimmer { from { background-position:180% 0; } to { background-position:-80% 0; } }
+.account-skeleton {
+  background:linear-gradient(100deg, rgba(255,255,255,.05) 20%, rgba(255,255,255,.11) 38%, rgba(255,255,255,.05) 56%);
+  background-size:220% 100%; animation:shimmer 1.5s linear infinite;
+}
+
+/* ── 9. Outcomes ───────────────────────────────────────────────────────────
+   Success lands with a spring and a light sweep; failure shakes. Both are
+   brief and both are pure transform/opacity. */
+.result-icon-wrap { position:relative; }
+.result-icon-wrap.success { animation:pop-in 620ms var(--ease-spring) both; }
+.result-icon-wrap.success::before {
+  content:''; position:absolute; inset:-24%; border-radius:50%; pointer-events:none;
+  background:conic-gradient(from 0deg, transparent 0deg, rgba(95,211,154,.42) 70deg, transparent 150deg);
+  animation:sweep 1.5s var(--ease-out) .1s both;
+}
+@keyframes pop-in { from { opacity:0; transform:scale(.55); } to { opacity:1; transform:scale(1); } }
+@keyframes sweep  { from { opacity:0; transform:rotate(-40deg) scale(.85); } to { opacity:1; transform:rotate(280deg) scale(1); } }
+.result-icon-wrap.failed { animation:shake 520ms var(--ease-out) both; }
+@keyframes shake {
+  10%,90% { transform:translateX(-2px); }
+  30%,70% { transform:translateX(4px); }
+  50%     { transform:translateX(-5px); }
+  100%    { transform:none; }
+}
+/* The amount is the point of these screens, so it gets its own arrival. */
+.amount-display-value, .result-amount { animation:rise 480ms var(--ease-out) 90ms both; font-variant-numeric:tabular-nums; }
+
+/* ── 10. Payment pipeline ──────────────────────────────────────────────────
+   The hop connectors carry a travelling dash while the payment is moving, so
+   the processing screen shows direction of travel instead of a static line. */
+.hop-line { background:linear-gradient(90deg, var(--border2), transparent); }
+.hop-line::after {
+  content:''; position:absolute; top:0; left:-30%; width:30%; height:100%;
+  background:linear-gradient(90deg, transparent, var(--accent-2), transparent);
+  animation:flow 1.35s linear infinite;
+}
+@keyframes flow { from { left:-30%; } to { left:100%; } }
+.hop-node.active .hop-node-circle { box-shadow:0 0 0 4px var(--accent-dim), 0 0 18px -2px var(--accent-glow); }
+.hop-node.active .hop-node-label { color:var(--accent-2); }
+
+/* ── 11. Voice ─────────────────────────────────────────────────────────────
+   The rings were hardcoded to the old blue; they now follow the accent and
+   breathe on a slower, calmer cycle (the listening state is already long). */
+.voice-ring { border-color:var(--accent-dim); }
+.voice-ring-1 { border-color:rgba(109,91,245,.14); }
+.voice-ring-2 { border-color:rgba(109,91,245,.22); }
+.voice-ring-3 { border-color:rgba(109,91,245,.32); }
+.voice-ring-1, .voice-ring-2, .voice-ring-3 { animation:pulse-ring 3.2s var(--ease-io) infinite; }
+@keyframes pulse-ring {
+  0%   { transform:scale(.92); opacity:.5; }
+  55%  { transform:scale(1.04); opacity:1; }
+  100% { transform:scale(.92); opacity:.5; }
+}
+.voice-mic-btn { transition:transform var(--t-fast) var(--ease-spring), box-shadow var(--t-base) var(--ease-out); }
+.voice-mic-btn:active { transform:scale(.94); }
+
+/* ── 12. Bottom sheet ──────────────────────────────────────────────────────
+   Spring up from the bottom, scrim fades, panel content lags slightly behind
+   so the sheet feels like it has mass. */
+@keyframes sheet-up   { from { transform:translateY(102%); } to { transform:none; } }
+@keyframes scrim-in   { from { opacity:0; } to { opacity:1; } }
+.account-sheet.open .sheet-panel    { animation:sheet-up 460ms var(--ease-spring) both; }
+.account-sheet.open .sheet-backdrop { animation:scrim-in var(--t-base) linear both; backdrop-filter:blur(6px); }
+
+/* ── 13. Numbers ─────────────────────────────────────────────────────────
+   Money should never jitter as it changes, so every figure is tabular. */
+.amount-display-value, .balance-amount, .txn-amount, .settlement-mini-value, .rc-plan-price {
+  font-variant-numeric:tabular-nums;
+}
+
+/* ── 14. Confirm screen: scroll, don't overlay ─────────────────────────────
+   The primary action starts below the fold here (the screen is ~1098px on a
+   ~627px viewport) and I first tried pinning it. That was wrong for a payment
+   screen: a pinned button sits on top of the From/To rows, hiding the payee
+   the user is supposed to verify before approving. Reviewing the details and
+   then acting is the correct order, so the button stays in the flow. */
+
+/* ── 15. Display type ─────────────────────────────────────────────────────
+   Outfit carries the moments that should feel designed — the balance, screen
+   titles, the big result headline. Inter stays on body copy, labels, and every
+   number that must not jitter. */
+.balance-amount, .amount-display-value, .result-title, .login-title,
+.pane-title, .merchant-name-large, .home-welcome h1, .app-logo {
+  font-family: var(--font-display);
+}
+
+/* ── 16. Sign-in hero ─────────────────────────────────────────────────────
+   The header lockup is suppressed on this screen (see the theme block), so the
+   hero mark is now the single place the brand appears. It arrives first, then
+   the copy follows. */
+.login-head { margin-bottom: 26px; }
+.login-title { font-size: 26px; font-weight: 600; letter-spacing: -.7px; }
+.login-sub { color: var(--text-2); }
+.login-mark { animation: pop-in 620ms var(--ease-spring) both; }
+.login-head > *:nth-child(2) { animation: rise 460ms var(--ease-out) 80ms both; }
+.login-head > *:nth-child(3) { animation: rise 460ms var(--ease-out) 150ms both; }

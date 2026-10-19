@@ -85,8 +85,15 @@ def check_supabase_health() -> dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_payer_account(vpa: str) -> Optional[dict]:
+    """Read one payer row from the mirror.
+
+    Deliberately impatient: Supabase measures ~17s from inside the cluster, and
+    this sits on the sign-in path. The local credential store and the payer bank
+    are both authoritative, so a mirror that cannot answer quickly is a mirror
+    we skip rather than wait on.
+    """
     try:
-        with httpx.Client(timeout=4.0) as client:
+        with httpx.Client(timeout=1.5) as client:
             r = client.get(f"{REST_URL}/payer_accounts?vpa=eq.{vpa}&select=*", headers=HEADERS)
             if r.status_code == 200 and r.json():
                 return r.json()[0]
