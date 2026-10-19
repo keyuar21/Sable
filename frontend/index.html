@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Sable — Voice Payments</title>
   <meta name="description" content="Sable — a polished voice-first UPI payments app.">
-  <link rel="stylesheet" href="styles.css?v=ux-8">
+  <link rel="stylesheet" href="styles.css?v=ux-12">
 </head>
 <body>
 
@@ -54,6 +54,66 @@
 
       <!-- ══════════════════════════════ LOGIN SCREEN ════════════════════ -->
       <div class="screen" id="screen-login">
+        <!-- ── Sign-in brand panel (desktop only) ────────────────────────────────
+             Exists so the mock-up phone does not have to be the whole story on a
+             wide screen. It is hidden by default and only appears when BOTH apply:
+             the viewport is wide enough for it, and the sign-in screen is active.
+             Hidden on every other screen, which keeps this change scoped to sign-in
+             and leaves the rest of the app untouched. -->
+        <div class="sable-side" id="sable-side">
+
+          <div class="sable-side-inner">
+            <div class="sable-wordmark">
+              <div class="logo-icon"><span></span><span></span><span></span></div>
+              <span class="sable-brand-name">Sable<b>.</b></span>
+            </div>
+
+            <h1 class="sable-h1"><span class="sable-sheen">Pay the way</span><br>you speak.</h1>
+
+            <p class="sable-lede">
+              Authorise money with your voice. The words, the tone and the challenge
+              digits are yours alone — there is nothing static for anyone to steal.
+            </p>
+
+            <ul class="sable-points">
+              <li><svg class="icon" aria-hidden="true"><use href="#ic-mic"/></svg><span>Voice-first — say a payee and an amount</span></li>
+              <li><svg class="icon" aria-hidden="true"><use href="#ic-shield"/></svg><span>Live challenge — fresh digits every payment</span></li>
+              <li><svg class="icon" aria-hidden="true"><use href="#ic-checkCircle"/></svg><span>Biometric-grade — your voice, your face</span></li>
+            </ul>
+
+            <div class="sable-foot">
+              <span class="sable-live"><i></i>Live</span>
+              <span>UPI rails</span><span>·</span>
+              <span>Voice ID</span><span>·</span>
+              <span>Face ID</span>
+            </div>
+          </div>
+
+          <!-- Drifting product glyphs. Twelve, hand-placed in the two outer bands
+               so they never sit behind the copy. Each carries its own --d (period),
+               --delay (negative, so the composition is already awake at load) and
+               --o (opacity) inline, because this is art direction, not layout. -->
+          <div class="sable-drift" aria-hidden="true">
+            <span class="drift-item" style="left:0px;  top:3%;  --d:26s; --delay:-4s;  --o:.12; width:24px"><svg class="icon"><use href="#ic-mic"/></svg></span>
+            <span class="drift-item" style="left:64px; top:26%; --d:34s; --delay:-14s; --o:.10; width:24px"><svg class="icon"><use href="#ic-card"/></svg></span>
+            <span class="drift-item" style="left:0px;  top:76%; --d:30s; --delay:-22s; --o:.09; width:26px"><svg class="icon"><use href="#ic-sendMoney"/></svg></span>
+            <span class="drift-item" style="left:78px; top:63%; --d:40s; --delay:-9s;  --o:.09; width:22px"><svg class="icon"><use href="#ic-store"/></svg></span>
+            <span class="drift-item" style="left:12px; top:81%; --d:28s; --delay:-18s; --o:.15; width:32px"><svg class="icon"><use href="#ic-checkCircle"/></svg></span>
+            <span class="drift-item" style="left:96px; top:94%; --d:44s; --delay:-30s; --o:.08; width:20px"><svg class="icon"><use href="#ic-waveform"/></svg></span>
+
+            <span class="drift-item drift-accent" style="right:66px; top:14%; --d:32s; --delay:-6s;  --o:.20; width:28px"><svg class="icon"><use href="#ic-bolt"/></svg></span>
+            <span class="drift-item" style="right:20px; top:30%; --d:38s; --delay:-25s; --o:.09; width:22px"><svg class="icon"><use href="#ic-package"/></svg></span>
+            <span class="drift-item" style="right:92px; top:50%; --d:27s; --delay:-13s; --o:.17; width:36px"><svg class="icon"><use href="#ic-smartphone"/></svg></span>
+            <span class="drift-item drift-gold" style="right:36px; top:70%; --d:36s; --delay:-20s; --o:.18; width:26px"><svg class="icon"><use href="#ic-shield"/></svg></span>
+            <span class="drift-item" style="right:78px; top:88%; --d:42s; --delay:-33s; --o:.08; width:20px"><svg class="icon"><use href="#ic-cart"/></svg></span>
+            <span class="drift-item" style="right:12px; top:63%; --d:24s; --delay:-2s;  --o:.12; width:30px"><svg class="icon"><use href="#ic-lock"/></svg></span>
+          </div>
+
+          <!-- Soft light that follows the pointer through the panel. animations.js
+               only writes --gx/--gy; a browser without JS keeps the static glow. -->
+          <div class="sable-side-glow" aria-hidden="true"></div>
+        </div>
+
         <div class="login-screen">
 
           <div class="login-head">
@@ -893,8 +953,8 @@
 <script src="config.js"></script>
 <script src="webauthn.js?v=3"></script>
 <script src="voicebio.js?v=voice-4"></script>
-<script src="icons.js?v=ux-8"></script>
-<script src="animations.js?v=ux-8"></script>
-<script src="app.js?v=ux-8"></script>
+<script src="icons.js?v=ux-12"></script>
+<script src="animations.js?v=ux-12"></script>
+<script src="app.js?v=ux-12"></script>
 </body>
 </html>

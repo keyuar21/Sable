@@ -164,10 +164,36 @@
     });
   }
 
+  /* ── sign-in panel: pointer light ───────────────────────────────────────
+     The left-hand brand panel carries a soft light that tracks the pointer.
+     The panel is pointer-events:none itself, so listen on the document and
+     only publish coordinates when the pointer is over the panel's half of
+     the canvas. CSS owns all the rendering; this only writes two vars. */
+  function initSideGlow() {
+    var side = document.getElementById('sable-side');
+    if (!side || calm()) return;
+    var raf = 0, px = 0, py = 0;
+    function apply() {
+      raf = 0;
+      side.style.setProperty('--gx', (px * 100).toFixed(2) + '%');
+      side.style.setProperty('--gy', (py * 100).toFixed(2) + '%');
+    }
+    document.addEventListener('pointermove', function (e) {
+      var r = side.getBoundingClientRect();
+      if (e.clientX > r.right) return;                 // over the phone form
+      if (!raf && e.clientX >= r.left) {
+        px = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+        py = Math.min(1, Math.max(0, e.clientY / Math.max(1, window.innerHeight)));
+        raf = requestAnimationFrame(apply);
+      }
+    });
+  }
+
   /* ── boot ──────────────────────────────────────────────────────────────── */
   function init() {
     initMoney();
     initTilt();
+    initSideGlow();
   }
 
   if (document.readyState === 'loading') {
