@@ -1,0 +1,84 @@
+# Grafana — the UI. Provisioned to know about Loki on startup (datasource +
+# the dashboard from ../dashboards) so there is nothing to click through.
+#
+#   url      https://upi-sim.local/grafana   (sub-path behind the app's Ingress)
+#   login    admin / upi-admin
+adminUser: admin
+adminPassword: upi-admin
+
+persistence:
+  enabled: true
+  size: 2Gi
+
+# The chart's init container runs `chown -R 472:472 /var/lib/grafana`, but the
+# volume is already owned by 472:472 -- and on this node that container fails
+# anyway with "Permission denied" on the three mode-700 directories (csv, pdf,
+# png) it cannot traverse. It exits 1, so the pod sits in Init:CrashLoopBackOff
+# and Grafana never starts. There is nothing for it to fix: turn it off.
+initChownData:
+  enabled: false
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits:   { memory: 512Mi }
+
+# A fixed uid lets the provisioned dashboard refer to this datasource by name.
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.observability.svc.cluster.local
+        isDefault: true
+        jsonData:
+          maxLines: 5000
+          timeout: 60
+
+# Dashboard JSON lives in ../dashboards/ and is applied as a ConfigMap by
+# install.sh. Grafana mounts it and adds it to the "UPI" folder.
+dashboardsConfigMaps:
+  upi: upi-grafana-dashboards
+
+# dashboardsConfigMaps only mounts the ConfigMap (at
+# /var/lib/grafana/dashboards/upi). A provider is still required to load it.
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: upi
+        orgId: 1
+        folder: UPI
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/upi
+
+# Served under /grafana so it shares the app's host and TLS cert — no extra
+# /etc/hosts entry needed.
+grafana.ini:
+  server:
+    root_url: https://upi-sim.local/grafana
+    serve_from_sub_path: true
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  path: /grafana
+  pathType: Prefix
+  hosts:
+    - upi-sim.local
+  annotations:
+    # Long log queries and large paste-in are fine here; Grafana streams the rest.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+  tls:
+    - secretName: upi-sim-tls
+      hosts:
+        - upi-sim.local

@@ -56,16 +56,17 @@ resources:
 ingress:
   enabled: true
   className: nginx
-  # Published as api.upi-sim.local/recharge; the rewrite strips the prefix.
+  # Published as upi-sim.local/api/recharge (same origin as the app); the
+  # rewrite strips the prefix.
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
   hosts:
-    - host: api.upi-sim.local
+    - host: upi-sim.local
       paths:
-        - path: /recharge(/|$)(.*)
+        - path: /api/recharge(/|$)(.*)
           pathType: ImplementationSpecific
   tls:
     - hosts:
-        - api.upi-sim.local
+        - upi-sim.local
       secretName: upi-sim-tls

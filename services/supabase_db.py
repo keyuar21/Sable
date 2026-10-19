@@ -22,7 +22,27 @@ HEADERS = {
 }
 
 
+_mirror_disabled_logged = False
+
+
 def _log(msg: str) -> None:
+    """Log a Supabase problem.
+
+    When Supabase is unconfigured REST_URL is empty, so every call raises
+    "Request URL is missing an 'http://' or 'https://' protocol." That is
+    expected — the mirror is reporting-only — and printing it once per call
+    buries the real application logs. Say it once, then stay quiet.
+    """
+    global _mirror_disabled_logged
+    if not is_supabase_configured():
+        if not _mirror_disabled_logged:
+            _mirror_disabled_logged = True
+            print(
+                "[supabase] mirror disabled (SUPABASE_URL / SUPABASE_SECRET_KEY unset) — "
+                "skipping reads and writes. This is expected unless you want the mirror populated.",
+                flush=True,
+            )
+        return
     print(f"[supabase] {msg}", flush=True)
 
 

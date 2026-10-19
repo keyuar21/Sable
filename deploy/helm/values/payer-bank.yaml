@@ -49,17 +49,18 @@ resources:
 ingress:
   enabled: true
   className: nginx
-  # app.js calls `${API.payerBank}/balance/<vpa>`; the rewrite strips /payer so
-  # the pod sees /balance/<vpa>.
+  # app.js calls `${API.payerBank}/balance/<vpa>`; published same-origin at
+  # upi-sim.local/api/payer and the rewrite strips /api/payer so the pod sees
+  # /balance/<vpa>.
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
   hosts:
-    - host: api.upi-sim.local
+    - host: upi-sim.local
       paths:
-        - path: /payer(/|$)(.*)
+        - path: /api/payer(/|$)(.*)
           pathType: ImplementationSpecific
   tls:
     - hosts:
-        - api.upi-sim.local
+        - upi-sim.local
       secretName: upi-sim-tls

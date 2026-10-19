@@ -1,0 +1,37 @@
+# Promtail — a DaemonSet that tails every pod's container log from the node
+# (/var/log/pods/**) and ships it to Loki. The labels it attaches are exactly
+# the ones we query by:
+#
+#   cluster    static, set below (one value per cluster)
+#   namespace  from the pod
+#   app        the per-service name, e.g. upi-psp  (see the relabel below)
+#   pod        the pod name, e.g. upi-psp-ff57fc6c4-8nwx7
+#   container  the container name
+#   node_name, job, ...
+config:
+  clients:
+    - url: http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push
+
+  snippets:
+    # The chart already derives `app` — but from app.kubernetes.io/name, which is
+    # the generic "upi-service" on every pod, so it would lump all eight
+    # services together. Override it with the per-service instance label
+    # ("upi-psp", "upi-switch", ...), then rebuild `job` (the chart makes it
+    # `namespace/app`) so it stays consistent.
+    extraRelabelConfigs:
+      - action: replace
+        source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_instance]
+        target_label: app
+      - action: replace
+        separator: /
+        source_labels: [namespace, app]
+        target_label: job
+      # Set this to the cluster's name. It is what the `cluster` filter in the
+      # Grafana dashboard matches on.
+      - action: replace
+        replacement: upi-helm-test
+        target_label: cluster
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { memory: 256Mi }

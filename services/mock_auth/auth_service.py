@@ -14,6 +14,7 @@ import base64
 import json
 import os
 import secrets
+import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta
@@ -61,6 +62,11 @@ RP_ID = os.environ.get("WEBAUTHN_RP_ID", "localhost")
 RP_NAME = "Voice UPI Simulator"
 ORIGIN = os.environ.get("WEBAUTHN_ORIGIN", "http://localhost:3000")
 
+# The payer bank is the source of truth for which VPAs exist. Set per environment
+# (the Helm values point it at http://upi-payer-bank:5003); the localhost default
+# is only for running every service on one host.
+PAYER_BANK_URL = os.environ.get("PAYER_BANK_URL", "http://localhost:5003")
+
 REST_URL = supabase_db.REST_URL
 HEADERS = supabase_db.HEADERS
 
@@ -102,9 +108,12 @@ class AuthCompleteRequest(BaseModel):
 def _get_account(vpa: str) -> dict:
     acc = supabase_db.get_payer_account(vpa)
     if not acc:
+        # Fall back to the bank. This was a hardcoded http://localhost:5003, which
+        # inside a pod is the auth container itself, not the bank — so every login
+        # failed with "No account for <vpa>" even though the account existed.
         try:
             with httpx.Client(timeout=2.0) as client:
-                r = client.get(f"http://localhost:5003/balance/{vpa}")
+                r = client.get(f"{PAYER_BANK_URL}/balance/{vpa}")
                 if r.status_code == 200:
                     return r.json()
         except Exception:
@@ -120,6 +129,100 @@ def _check_pin(pin: str, pin_hash: str) -> bool:
         return bcrypt.checkpw(pin.encode(), pin_hash.encode())
     except Exception:
         return False
+
+
+# ── Local PIN store ───────────────────────────────────────────────────────────
+# The PIN hash is a credential, so it belongs with the other credentials this
+# service owns — next to the voiceprints, in the same SQLite file. Supabase is
+# only a mirror: when it is unconfigured (the default for a standalone run) a
+# hash written there goes nowhere, /pin/verify then has nothing to compare
+# against, and sign-in can never succeed.
+AUTH_DB_PATH = os.environ.get("AUTH_DB_PATH") or os.environ.get(
+    "VOICE_BIOMETRICS_DB_PATH", "/data/voice_biometrics.db"
+)
+
+
+def _auth_db() -> sqlite3.Connection:
+    """The local credential store: PIN hashes and WebAuthn public keys.
+
+    Supabase is a mirror, never the authority. Keeping the authoritative copies
+    here is what lets a standalone stack sign in and enrol Face ID / Touch ID
+    with no Supabase configured at all.
+    """
+    conn = sqlite3.connect(AUTH_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pin_credentials (
+            vpa        TEXT PRIMARY KEY,
+            pin_hash   TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webauthn_credentials (
+            credential_id TEXT PRIMARY KEY,
+            vpa           TEXT NOT NULL,
+            public_key    TEXT NOT NULL,
+            sign_count    INTEGER NOT NULL DEFAULT 0,
+            device_label  TEXT,
+            created_at    TEXT NOT NULL,
+            last_used_at  TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_vpa "
+        "ON webauthn_credentials (vpa)"
+    )
+    conn.commit()
+    return conn
+
+
+def _store_pin_hash(vpa: str, pin_hash: str) -> None:
+    conn = _auth_db()
+    try:
+        conn.execute(
+            "INSERT INTO pin_credentials (vpa, pin_hash, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(vpa) DO UPDATE SET pin_hash=excluded.pin_hash, "
+            "updated_at=excluded.updated_at",
+            (vpa, pin_hash, datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _load_pin_hash(vpa: str) -> Optional[str]:
+    conn = _auth_db()
+    try:
+        row = conn.execute(
+            "SELECT pin_hash FROM pin_credentials WHERE vpa=?", (vpa,)
+        ).fetchone()
+        return row["pin_hash"] if row else None
+    finally:
+        conn.close()
+
+
+def _mirror_account_update(vpa: str, updates: dict) -> None:
+    """Push a PIN-state change to Supabase, when it is configured.
+
+    The lockout counter is bookkeeping; an unconfigured mirror is a normal
+    state, not an error. Sending it anyway used to raise, which turned a
+    successful sign-in into a 500.
+    """
+    if not supabase_db.is_supabase_configured():
+        return
+    try:
+        with httpx.Client(timeout=4.0) as client:
+            client.patch(
+                f"{REST_URL}/payer_accounts?vpa=eq.{vpa}", headers=HEADERS, json=updates
+            )
+    except Exception as e:
+        print(f"[auth] PIN state mirror to Supabase failed: {e}", flush=True)
+
 
 def _issue_step_up_token(vpa: str, method: str) -> str:
     token = secrets.token_urlsafe(24)
@@ -141,35 +244,87 @@ def _issue_step_up_token(vpa: str, method: str) -> str:
         pass  # in-memory fallback above still works for the demo
     return token
 
-def _get_credentials_for_vpa(vpa: str) -> list[dict]:
+def _local_credentials(vpa: str) -> list[dict]:
+    conn = _auth_db()
     try:
-        with httpx.Client(timeout=4.0) as client:
-            r = client.get(f"{REST_URL}/webauthn_credentials?vpa=eq.{vpa}&select=*", headers=HEADERS)
-            if r.status_code == 200:
-                return r.json()
-    except Exception:
-        pass
-    return []
+        rows = conn.execute(
+            "SELECT credential_id, vpa, public_key, sign_count, device_label, "
+            "created_at, last_used_at FROM webauthn_credentials WHERE vpa=? "
+            "ORDER BY created_at ASC",
+            (vpa,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+def _get_credentials_for_vpa(vpa: str) -> list[dict]:
+    # Supabase first when it is configured (it may hold credentials enrolled from
+    # elsewhere), then the local store.
+    if supabase_db.is_supabase_configured():
+        try:
+            with httpx.Client(timeout=4.0) as client:
+                r = client.get(f"{REST_URL}/webauthn_credentials?vpa=eq.{vpa}&select=*", headers=HEADERS)
+                if r.status_code == 200 and r.json():
+                    return r.json()
+        except Exception as e:
+            print(f"[auth] Supabase credential read failed, using local store: {e}", flush=True)
+    return _local_credentials(vpa)
 
 def _save_credential(vpa: str, credential_id: str, public_key: str, sign_count: int, device_label: str):
-    with httpx.Client(timeout=4.0) as client:
-        r = client.post(f"{REST_URL}/webauthn_credentials", headers=HEADERS, json={
-            "vpa": vpa,
-            "credential_id": credential_id,
-            "public_key": public_key,
-            "sign_count": sign_count,
-            "device_label": device_label,
-        })
-        if r.status_code not in (200, 201):
-            raise HTTPException(500, f"Failed to store credential: {r.text}")
+    # Local first, so enrolment succeeds with no Supabase. This used to be an
+    # unguarded Supabase POST, which raised when it was unconfigured and turned
+    # "set up Face ID / Touch ID" into a 500.
+    conn = _auth_db()
+    try:
+        conn.execute(
+            "INSERT INTO webauthn_credentials "
+            "(credential_id, vpa, public_key, sign_count, device_label, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(credential_id) DO UPDATE SET "
+            "public_key=excluded.public_key, sign_count=excluded.sign_count, "
+            "device_label=excluded.device_label",
+            (credential_id, vpa, public_key, int(sign_count or 0), device_label,
+             datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    if supabase_db.is_supabase_configured():
+        try:
+            with httpx.Client(timeout=4.0) as client:
+                client.post(f"{REST_URL}/webauthn_credentials", headers=HEADERS, json={
+                    "vpa": vpa,
+                    "credential_id": credential_id,
+                    "public_key": public_key,
+                    "sign_count": sign_count,
+                    "device_label": device_label,
+                })
+        except Exception as e:
+            print(f"[auth] credential mirror to Supabase failed: {e}", flush=True)
 
 def _update_sign_count(credential_id: str, new_count: int):
-    with httpx.Client(timeout=4.0) as client:
-        client.patch(
-            f"{REST_URL}/webauthn_credentials?credential_id=eq.{credential_id}",
-            headers=HEADERS,
-            json={"sign_count": new_count, "last_used_at": datetime.utcnow().isoformat()},
+    conn = _auth_db()
+    try:
+        conn.execute(
+            "UPDATE webauthn_credentials SET sign_count=?, last_used_at=? "
+            "WHERE credential_id=?",
+            (int(new_count or 0), datetime.utcnow().isoformat(), credential_id),
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+    if supabase_db.is_supabase_configured():
+        try:
+            with httpx.Client(timeout=4.0) as client:
+                client.patch(
+                    f"{REST_URL}/webauthn_credentials?credential_id=eq.{credential_id}",
+                    headers=HEADERS,
+                    json={"sign_count": new_count, "last_used_at": datetime.utcnow().isoformat()},
+                )
+        except Exception as e:
+            print(f"[auth] sign-count mirror to Supabase failed: {e}", flush=True)
 
 
 # ================= Health =================
@@ -439,12 +594,12 @@ def set_pin(req: SetPinRequest):
         raise HTTPException(400, "PIN must be 4-6 digits")
     _get_account(req.vpa)  # 404s if account doesn't exist
     pin_hash = _hash_pin(req.pin)
-    with httpx.Client(timeout=4.0) as client:
-        client.patch(
-            f"{REST_URL}/payer_accounts?vpa=eq.{req.vpa}",
-            headers=HEADERS,
-            json={"pin_hash": pin_hash, "failed_pin_attempts": 0, "pin_locked_until": None},
-        )
+    # Authoritative copy, so a standalone stack needs no Supabase.
+    _store_pin_hash(req.vpa, pin_hash)
+    _mirror_account_update(
+        req.vpa,
+        {"pin_hash": pin_hash, "failed_pin_attempts": 0, "pin_locked_until": None},
+    )
     return {"success": True, "message": "PIN set"}
 
 @app.post("/pin/verify")
@@ -455,23 +610,34 @@ def verify_pin(req: VerifyPinRequest):
     if locked_until and datetime.fromisoformat(locked_until.replace("Z", "+00:00")) > datetime.utcnow().replace(tzinfo=None).astimezone():
         raise HTTPException(403, "PIN locked due to too many failed attempts. Try again later.")
 
-    pin_hash = acc.get("pin_hash")
-    if not pin_hash:
+    pin_hash = acc.get("pin_hash") or _load_pin_hash(req.vpa)
+    # Rows that predate pin_hash carry the PIN in a plaintext `pin` column (the
+    # Supabase table is the one the app was seeded from). Accept that once, then
+    # cache a bcrypt hash locally so the plaintext is only ever read a single time.
+    legacy_pin = acc.get("pin")
+    if not pin_hash and legacy_pin in (None, ""):
         raise HTTPException(400, "No PIN set for this account yet. Call /pin/set first.")
 
-    if not _check_pin(req.pin, pin_hash):
+    if pin_hash:
+        pin_ok = _check_pin(req.pin, pin_hash)
+    else:
+        pin_ok = secrets.compare_digest(str(legacy_pin), str(req.pin))
+        if pin_ok:
+            try:
+                _store_pin_hash(req.vpa, _hash_pin(req.pin))
+            except Exception as e:
+                print(f"[auth] could not cache the upgraded PIN hash: {e}", flush=True)
+
+    if not pin_ok:
         attempts = acc.get("failed_pin_attempts", 0) + 1
         updates = {"failed_pin_attempts": attempts}
         if attempts >= 3:
             updates["pin_locked_until"] = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
-        with httpx.Client(timeout=4.0) as client:
-            client.patch(f"{REST_URL}/payer_accounts?vpa=eq.{req.vpa}", headers=HEADERS, json=updates)
+        _mirror_account_update(req.vpa, updates)
         remaining = max(0, 3 - attempts)
         raise HTTPException(401, f"Incorrect PIN. {remaining} attempt(s) remaining before lockout.")
 
-    with httpx.Client(timeout=4.0) as client:
-        client.patch(f"{REST_URL}/payer_accounts?vpa=eq.{req.vpa}", headers=HEADERS,
-                     json={"failed_pin_attempts": 0, "pin_locked_until": None})
+    _mirror_account_update(req.vpa, {"failed_pin_attempts": 0, "pin_locked_until": None})
 
     token = _issue_step_up_token(req.vpa, "pin")
     return {"success": True, "step_up_token": token, "expires_in_secs": 90}

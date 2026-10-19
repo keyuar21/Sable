@@ -137,26 +137,32 @@ and `psp` after them, so readiness probes pass on the first try.
 ## Ingress and the local kind cluster
 
 Each release can publish itself through the chart's `templates/ingress.yaml`.
-The API services share one host and live under a path prefix that is stripped
-before the request reaches the pod (rewrite-target `/psp/initiate -> /initiate`):
+Everything is served from the **same host** — including the APIs, under
+`/api/<svc>` — and the prefix is stripped before the request reaches the pod
+(`rewrite-target`: `/api/psp/initiate -> /initiate`):
 
 | Host | Path | Backend |
 |---|---|---|
 | `upi-sim.local` | `/` | `upi-frontend:8080` |
-| `api.upi-sim.local` | `/psp` | `upi-psp:5001` |
-| | `/switch` | `upi-switch:5002` |
-| | `/payer` | `upi-payer-bank:5003` |
-| | `/payee` | `upi-payee-bank:5004` |
-| | `/auth` | `upi-auth:5005` |
-| | `/recharge` | `upi-recharge:5007` |
+| `upi-sim.local` | `/api/psp` | `upi-psp:5001` |
+| | `/api/switch` | `upi-switch:5002` |
+| | `/api/payer` | `upi-payer-bank:5003` |
+| | `/api/payee` | `upi-payee-bank:5004` |
+| | `/api/auth` | `upi-auth:5005` |
+| | `/api/recharge` | `upi-recharge:5007` |
 
-`frontend/config.js` is written against exactly these URLs (the `extraFiles`
-block in `values/frontend.yaml`). The ops console deliberately has no ingress.
+One host, not two, is deliberate. A separate API host needs its own certificate
+exception, and `fetch()` fails silently when the certificate is untrusted — the
+browser reports "Failed to fetch" while **nothing** reaches the Ingress, so the
+logs look empty. Same-origin also removes CORS entirely.
+
+`frontend/config.js` holds the matching relative paths (the `extraFiles` block
+in `values/frontend.yaml`); the ops console deliberately has no ingress.
 
 The services are served over **https** with a self-signed cert (`upi-sim-tls`).
 That is not decoration: Voice ID records through `getUserMedia`, and browsers
 only expose the microphone on a secure context — `http://upi-sim.local` is not
-one. Your browser will warn once per host on first visit.
+one. Your browser will warn once, for `upi-sim.local`, on first visit.
 
 `deploy/helm/kind-up.sh` brings the whole stack up on a local kind cluster —
 cluster (with 80/443 published and the node labelled `ingress-ready=true`, see
@@ -170,10 +176,96 @@ deploy/helm/kind-up.sh
 It prints the one host entry you must add yourself:
 
 ```bash
-echo '127.0.0.1 upi-sim.local api.upi-sim.local' | sudo tee -a /etc/hosts
+echo '127.0.0.1 upi-sim.local' | sudo tee -a /etc/hosts
 ```
 
 Then open <https://upi-sim.local>.
+
+## Logs
+
+Application logs from every service are collected into Loki and queried in
+Grafana by **cluster**, **namespace**, **app** and **pod**:
+
+```bash
+deploy/observability/install.sh
+```
+
+Then open <https://upi-sim.local/grafana> (**admin / upi-admin**) and pick the
+**UPI — Service Logs** dashboard. See `deploy/observability/README.md`.
+
+### Reading a sign-in failure out of the logs
+
+The Ingress is the sharpest tool here: if a request never appears in the
+`ingress-nginx` logs, the browser never sent it, and no amount of application
+logging will show the cause. Several failures stood between the UI and a working
+sign-in, and each one looks like the others from the browser:
+
+| Symptom | Real cause | Fix |
+|---|---|---|
+| "Failed to fetch", and *nothing* in the Ingress logs | the JS still called a second host (`api.upi-sim.local`); `fetch()` fails silently when that host's certificate is untrusted | serve everything from `upi-sim.local` — one host, one exception — and let `config.js` supply the URLs |
+| "No account for alice@…" although the account exists | the auth service looked the account up at a hardcoded `http://localhost:5003`, which inside the pod is the auth container itself | `PAYER_BANK_URL` (see `values/auth.yaml`) |
+| "No PIN set for this account yet" right after setting one | the PIN hash was written only to Supabase, which is unconfigured, so `/pin/set` failed and the bank silently swallowed the error | keep the hash in the auth service's own SQLite store (`/data/voice_biometrics.db`) |
+| "No account for 9090909090@hdfcbank" although the row is plainly in Supabase | the `upi-supabase` secret was empty *and* the auth deployment had no `envFrom`, so no service ever saw the project URL | populate the secret (below) and reference it from `values/auth.yaml` |
+| "No PIN set for this account yet" for a row that *does* have a PIN | the seeded table stores a plaintext `pin` column; the code only looked for `pin_hash` | `verify_pin` accepts the legacy column, then caches a bcrypt hash locally so the plaintext is read once |
+| a Supabase-only account signs in but every payment is refused with "no ledger account" | the journal can only post balanced entries for accounts in its chart of accounts; a Supabase row was never opened locally | the payer bank imports the row with an opening-balance entry on first debit |
+| `GET /balance/{vpa}` returns the account's PIN | the Supabase fall-through returned the row whole, and the row carries `pin`, `pin_hash` and the lockout counters — on an endpoint with no authentication | project only `vpa`, `holder_name`, `balance` and the empty ledger fields |
+| a rebuilt image never reaches the pods even though the load was run | the load failed and its output was discarded (`>/dev/null 2>&1`), so nothing reported it — the tag still resolves, the rollout still goes green, and the pods keep running the old code | `make load` now names each image and aborts on failure; prove it with `kubectl -n upi exec deploy/upi-auth -- grep -c <symbol> /app/services/mock_auth/auth_service.py` |
+| everything is gone the next morning: `docker info` hangs and the socket answers nothing | the Mac slept and Docker Desktop's Linux VM was killed; the backend process stays up, so `ps -o etime` looks normal, but its VM (`com.docker.virtualization`/`qemu`) is gone and the engine never returns on its own | quit and reopen Docker Desktop, then `docker start upi-helm-test-control-plane` — it has no restart policy — and re-check `kubectl get pods -A` |
+| `docker build` fails with `lookup registry-1.docker.io: no such host` just after Docker Desktop restarts | the VM's DNS proxy has not come up yet, so BuildKit cannot resolve the `# syntax=docker/dockerfile:1.7` frontend image before it even reads the Dockerfile | retry in a minute; if it persists restart Docker Desktop again, or build with `DOCKER_BUILDKIT=0` — the legacy builder needs no frontend image and reuses the cached `pip install` layer |
+
+**Prove the code, not the tag.** `imagePullPolicy: IfNotPresent` means a pod can
+be Running, Ready and green in `helm status` while running an image from an hour
+ago. Before concluding that a change did not work, check that a symbol from the
+change is actually in the container:
+
+```sh
+kubectl -n upi exec deploy/upi-auth -- grep -c legacy_pin /app/services/mock_auth/auth_service.py
+```
+
+To follow one VPA through every service:
+
+```logql
+{namespace="upi"} |~ "loluser@hdfcbank"
+```
+
+## Pointing the stack at your Supabase project
+
+The services fall back to their own SQLite data unless `SUPABASE_URL` and
+`SUPABASE_SECRET_KEY` are present in their environment. Those come from one
+pre-existing secret, `upi-supabase`, injected with `envFrom`, so every key in it
+becomes an environment variable. Create it from the values in the repo's `.env`:
+
+```sh
+set -a; . ./.env; set +a
+kubectl -n upi create secret generic upi-supabase \
+  --from-literal=SUPABASE_URL="$SUPABASE_URL" \
+  --from-literal=SUPABASE_SECRET_KEY="$SUPABASE_SECRET_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+`SUPABASE_URL` / `SUPABASE_SECRET_KEY` are read when each service starts, so a
+changed secret only takes effect after a restart:
+
+```sh
+for s in auth psp payer-bank payee-bank switch; do
+  kubectl -n upi rollout restart deploy/upi-$s
+done
+```
+
+`values/auth.yaml` sets `existingSecret: upi-supabase`; the other four reference
+it already. If you add a service that talks to Supabase, give it the same key —
+a deployment with no `envFrom` gets no credentials at all, which is exactly how
+the "No account for …" failure above happened.
+
+Two consequences of using the project as the source of accounts:
+
+- **PINs.** Rows that predate `pin_hash` carry a plaintext `pin` column. Those
+  are accepted on first verification and a bcrypt hash is cached in the auth
+  service's SQLite store, so the plaintext is only ever read once.
+- **Ledger.** The Supabase balance is copied into the payer bank's journal as an
+  opening balance the first time that account pays. From then on the local
+  ledger is authoritative for that VPA and the two balances can drift; re-import
+  means deleting the local account, not editing Supabase.
 
 ## Still to do before this runs for real
 
@@ -189,9 +281,23 @@ Written to be kept, not yet deployed. Two things still need code changes:
    file has `mode: http` for this reason, since each bank already exposes
    `/ledger/trial-balance`, but the console does not use that path yet.
 
-Nothing here has been built or deployed: no Docker daemon was available, so the
-Dockerfiles are written and reviewed but unbuilt. The charts are verified with
-`helm lint` and `helm template` for all seven services.
+3. **The Supabase mirror is exercised but one-directional.** PIN hashes, WebAuthn
+   public keys and voiceprints are authoritative in the auth service's own SQLite
+   file (`/data/voice_biometrics.db`), which is what lets a standalone stack sign
+   in and enrol Face ID without Supabase at all. When `SUPABASE_URL` /
+   `SUPABASE_SECRET_KEY` are set the writes are mirrored there as well. Reads are
+   local-first, so a row edited directly in Supabase is only seen on a cold
+   service start — restart rather than edit while testing.
+
+4. **PIN lockout is counted in the mirrored table.** The failed-attempt counter and
+   lockout timestamp go through `_mirror_account_update`, so they persist only
+   when Supabase is configured. Without it a wrong PIN is simply rejected and the
+   counter resets each request. Fine for a demo; wire the counter into the local
+   store if it matters.
+
+The images are built and the whole stack runs on a local kind cluster
+(`deploy/helm/kind-up.sh`). `helm lint` and `helm template` still cover the
+charts on their own.
 
 Also worth knowing: the bank services and auth use `ReadWriteOnce` volumes and
 are pinned to `replicaCount: 1`. SQLite admits one writer, and the ledger file

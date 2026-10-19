@@ -6,11 +6,13 @@
 'use strict';
 
 // Same runtime-config contract as app.js: the URL comes from
-// window.__UPI_CONFIG__ (rendered from the Helm ConfigMap). The fallback is the
-// Ingress URL the browser can reach — not localhost, and not the in-cluster
-// Service DNS (upi-auth:5005), neither of which the browser can resolve.
-const RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
-const VOICE_AUTH_API = RUNTIME.auth || 'https://api.upi-sim.local/auth';
+// window.__UPI_CONFIG__ (rendered from the Helm ConfigMap). It is relative and
+// same-origin, so the browser uses the certificate it already trusts for the app
+// host — not localhost, and not the in-cluster Service DNS (upi-auth:5005).
+// NB: classic scripts share one global scope — same RUNTIME collision trap as
+// webauthn.js. Keep this name distinct from app.js's.
+const VOICE_RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
+const VOICE_AUTH_API = VOICE_RUNTIME.auth || '/api/auth';
 
 const ENROLL_BASE_PHRASE = 'My voice is my key';
 // Kept for backward-compat with app.js updateEnrollUI until challenge phrase is set
@@ -52,7 +54,7 @@ function isNegativeSpeech(text) {
 let _cachedCuteVoice = null;
 let _voicesReady = false;
 let _assistantAudio = null;
-const LOCAL_TTS_API = `${RUNTIME.psp || 'https://api.upi-sim.local/psp'}/assistant/voice`;
+const LOCAL_TTS_API = `${VOICE_RUNTIME.psp || '/api/psp'}/assistant/voice`;
 
 function _pickCuteGirlVoice() {
   if (_cachedCuteVoice) return _cachedCuteVoice;

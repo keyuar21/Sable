@@ -22,16 +22,20 @@ app:
       device_binding: true
 
   # The browser cannot read a mounted YAML file, so the frontend's real config
-  # ships as a JavaScript file mounted straight into the web root. These are
-  # public URLs reached from the user's browser, not in-cluster service names.
+  # ships as a JavaScript file mounted straight into the web root. The values are
+  # RELATIVE, same-origin paths: the browser talks to the host it loaded the app
+  # from (upi-sim.local/api/...) — the cert it already trusts, and no CORS. The
+  # nginx rewrite in each service's values file strips /api/<svc> before the
+  # request reaches the pod.
   extraFiles:
     config.js: |
       window.__UPI_CONFIG__ = {
-        psp:       'https://api.upi-sim.local/psp',
-        switch:    'https://api.upi-sim.local/switch',
-        payerBank: 'https://api.upi-sim.local/payer',
-        payeeBank: 'https://api.upi-sim.local/payee',
-        auth:      'https://api.upi-sim.local/auth',
+        psp:       '/api/psp',
+        switch:    '/api/switch',
+        payerBank: '/api/payer',
+        payeeBank: '/api/payee',
+        auth:      '/api/auth',
+        recharge:  '/api/recharge',
       };
 
 extraVolumes:

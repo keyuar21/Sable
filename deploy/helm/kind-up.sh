@@ -3,13 +3,18 @@
 # Bring the whole UPI simulator up on a local kind cluster, Ingress included.
 #
 # Result:
-#   http://upi-sim.local              -> frontend
-#   http://api.upi-sim.local/psp      -> PSP
-#   http://api.upi-sim.local/switch   -> NPCI switch
-#   http://api.upi-sim.local/payer    -> payer bank
-#   http://api.upi-sim.local/payee    -> payee bank
-#   http://api.upi-sim.local/auth     -> auth
-#   http://api.upi-sim.local/recharge -> recharge
+#   https://upi-sim.local                     -> frontend
+#   https://upi-sim.local/api/psp             -> PSP
+#   https://upi-sim.local/api/switch          -> NPCI switch
+#   https://upi-sim.local/api/payer           -> payer bank
+#   https://upi-sim.local/api/payee           -> payee bank
+#   https://upi-sim.local/api/auth            -> auth
+#   https://upi-sim.local/api/recharge        -> recharge
+#
+# Everything is served from ONE host on purpose. A second API host (the earlier
+# api.upi-sim.local) needs its own certificate exception; fetch() fails silently
+# when the cert is untrusted, which shows up in the browser as "Failed to fetch"
+# with nothing at all in the Ingress logs. Same origin also means no CORS.
 #
 # Usage:
 #   deploy/helm/kind-up.sh            # recreate the cluster from scratch, then deploy
@@ -75,24 +80,42 @@ kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
 
 # recharge loads this via envFrom. If it is missing the pod is stuck in
 # CreateContainerConfigError. Empty is fine: its plan source is "builtin".
-# upi-supabase is the same story for the banks, switch and psp -- the Supabase
-# mirror is reporting-only, so an empty secret is enough to boot. Fill it from
-# .env if you want the mirror populated.
-for secret in upi-supabase upi-recharge-keys; do
-  kubectl -n "$NS" get secret "$secret" >/dev/null 2>&1 || \
-    kubectl -n "$NS" create secret generic "$secret"
-done
+kubectl -n "$NS" get secret upi-recharge-keys >/dev/null 2>&1 || \
+  kubectl -n "$NS" create secret generic upi-recharge-keys
+
+# upi-supabase carries the project URL and service key for the banks, switch, psp
+# and auth; values/auth.yaml references it too. Seed it from the repo's .env when
+# there is one, so a fresh cluster can sign in the accounts that live in the
+# project. An empty secret still boots -- the SQLite stores are authoritative and
+# the mirror is reporting-only -- but then only local accounts exist and sign-in
+# fails with "No account for <vpa>". These are read once at start-up, so a changed
+# secret needs `kubectl rollout restart` on those five deployments.
+ENV_FILE="$ROOT/.env"
+if [ -f "$ENV_FILE" ] && grep -q '^SUPABASE_URL=.\+' "$ENV_FILE"; then
+  SUPA_URL="$(sed -n 's/^SUPABASE_URL=//p' "$ENV_FILE" | head -1 | tr -d '\r')"
+  SUPA_KEY="$(sed -n 's/^SUPABASE_SECRET_KEY=//p' "$ENV_FILE" | head -1 | tr -d '\r')"
+  kubectl -n "$NS" create secret generic upi-supabase \
+    --from-literal=SUPABASE_URL="$SUPA_URL" \
+    --from-literal=SUPABASE_SECRET_KEY="$SUPA_KEY" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  echo "    upi-supabase seeded from .env"
+else
+  kubectl -n "$NS" get secret upi-supabase >/dev/null 2>&1 || \
+    kubectl -n "$NS" create secret generic upi-supabase
+  echo "    upi-supabase left empty (no SUPABASE_URL in .env)"
+fi
 
 # TLS for the Ingress. Voice ID needs a secure context: browsers only expose
 # getUserMedia (the microphone) on https:// -- http://upi-sim.local is not one,
 # so the recorder fails even though the page loads. A self-signed cert is enough
-# to satisfy that; the browser warns once per host. Swap in mkcert/an internal CA
-# if you want the warning gone.
+# to satisfy that; the browser warns once for upi-sim.local. Swap in mkcert/an
+# internal CA if you want the warning gone. Only one host needs an exception
+# because every service is served from upi-sim.local.
 CERT_DIR="$(mktemp -d)"
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -keyout "$CERT_DIR/tls.key" -out "$CERT_DIR/tls.crt" \
   -subj "/CN=upi-sim.local" \
-  -addext "subjectAltName=DNS:upi-sim.local,DNS:api.upi-sim.local"
+  -addext "subjectAltName=DNS:upi-sim.local"
 kubectl -n "$NS" create secret tls upi-sim-tls \
   --cert="$CERT_DIR/tls.crt" --key="$CERT_DIR/tls.key" \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -108,8 +131,8 @@ kubectl -n ingress-nginx wait --for=condition=ready pod \
 # ── 6. Deploy every service ─────────────────────────────────────────────────
 # Order matters on a cold start: switch and auth first, then the banks, then
 # psp. Each values file carries its own Ingress -- the API services are
-# published under api.upi-sim.local with a path prefix and a rewrite that strips
-# it (see the ingress: block in each values/*.yaml).
+# published on upi-sim.local under /api/<svc> with a rewrite that strips the
+# prefix (see the ingress: block in each values/*.yaml).
 echo "==> installing releases"
 for s in $SERVICES; do
   echo "  -> upi-$s"
@@ -122,8 +145,8 @@ done
 # ingress controller (reachable on the host's port 80 through the mappings).
 if ! grep -q "upi-sim.local" /etc/hosts 2>/dev/null; then
   echo
-  echo "Add these host entries once (needs sudo):"
-  echo "  echo '127.0.0.1 upi-sim.local api.upi-sim.local' | sudo tee -a /etc/hosts"
+  echo "Add this host entry once (needs sudo):"
+  echo "  echo '127.0.0.1 upi-sim.local' | sudo tee -a /etc/hosts"
   echo
 fi
 
@@ -133,7 +156,7 @@ kubectl -n "$NS" wait --for=condition=ready pod --all --timeout=300s || true
 kubectl -n "$NS" get pods
 echo
 echo "frontend:     https://upi-sim.local"
-echo "APIs:         https://api.upi-sim.local/{psp,switch,payer,payee,auth,recharge}"
+echo "APIs:         https://upi-sim.local/api/{psp,switch,payer,payee,auth,recharge}"
 echo "ops console:  kubectl -n $NS port-forward svc/upi-ops-console 5010:5010"
 echo
 echo "teardown:     kind delete cluster --name $CLUSTER"

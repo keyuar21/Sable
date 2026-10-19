@@ -7,10 +7,14 @@
 
 'use strict';
 
-// Read the runtime config (see config.js) so the browser talks to the Ingress.
-// The fallback is the Ingress URL, not the in-cluster Service DNS.
-const RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
-const AUTH_API = RUNTIME.auth || 'https://api.upi-sim.local/auth';
+// Read the runtime config (see config.js) so the browser talks to the same
+// origin it loaded the app from — the certificate it already trusts, no CORS.
+// NB: these are classic scripts and share ONE global scope, so this must not be
+// called RUNTIME — app.js already declares that, and a duplicate `const RUNTIME`
+// is a SyntaxError that kills this whole script. When one script dies the page
+// still renders (the HTML defaults are visible) but nothing is wired up.
+const AUTH_RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
+const AUTH_API = AUTH_RUNTIME.auth || '/api/auth';
 
 // ---------- base64url <-> ArrayBuffer helpers (WebAuthn moves binary data) ----------
 

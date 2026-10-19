@@ -13,8 +13,23 @@ service:
 
 replicaCount: 1
 
+# Injected with envFrom, so every key in this secret becomes an environment
+# variable. Auth needs the Supabase project: that is where the accounts were
+# seeded, and without it sign-in can only see the local SQLite bank.
+existingSecret: upi-supabase
+
 env:
   VOICE_BIOMETRICS_DB_PATH: /data/voice_biometrics.db
+  # The bank that decides which VPAs exist. Without this the service fell back to
+  # http://localhost:5003 — its own container — so every login 404'd with
+  # "No account for <vpa>" even for accounts that did exist.
+  PAYER_BANK_URL: http://upi-payer-bank:5003
+  # WebAuthn is origin-bound: these MUST match the origin the browser uses, or
+  # Face ID / Touch ID setup and login fail with a mismatch. The service reads env
+  # vars — the app.config.webauthn block below is not wired up yet — so these are
+  # the values that actually count.
+  WEBAUTHN_RP_ID: upi-sim.local
+  WEBAUTHN_ORIGIN: https://upi-sim.local
 
 app:
   config:
@@ -56,17 +71,23 @@ resources:
 ingress:
   enabled: true
   className: nginx
-  # Published as api.upi-sim.local/auth; the rewrite strips the prefix so the
-  # pod still sees /enroll, /verify, /health.
+  # Published as upi-sim.local/api/auth (same origin as the app); the rewrite
+  # strips the prefix so the pod still sees /pin/verify, /voice/*, /health.
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Voice enrolment posts five WAV samples in one multipart body — about 2.2 MB
+    # for 5 x 5s of 48 kHz mono PCM. nginx's default client_max_body_size is 1 MB,
+    # so the Ingress answered 413 and the auth service never saw the request: the
+    # browser reported "Enrollment failed" and nothing at all appeared in the
+    # service logs, which makes this look like a broken recorder. 0 = no limit.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
   hosts:
-    - host: api.upi-sim.local
+    - host: upi-sim.local
       paths:
-        - path: /auth(/|$)(.*)
+        - path: /api/auth(/|$)(.*)
           pathType: ImplementationSpecific
   tls:
     - hosts:
-        - api.upi-sim.local
+        - upi-sim.local
       secretName: upi-sim-tls

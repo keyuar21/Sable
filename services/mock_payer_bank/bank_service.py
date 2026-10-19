@@ -175,6 +175,44 @@ def _migrate_balances_to_journal(conn):
     print(f"[ledger] {BANK_CODE} books balanced: {report['total_dr_paise']} paise DR/CR", flush=True)
 
 
+def _import_supabase_account(vpa: str) -> bool:
+    """Open a Supabase-only account in this bank's ledger.
+
+    The journal can only post balanced entries for accounts it knows, so an
+    account that exists solely in Supabase is readable (the /balance fall-through
+    returns it) but not spendable — /debit refuses it with a 409. Mirror it in
+    with an opening-balance entry on first use so the accounts the project was
+    seeded from can actually pay. No-op when Supabase is unconfigured or the
+    account is unknown there.
+    """
+    sb = supabase_db.get_payer_account(vpa)
+    if not sb:
+        return False
+    holder = sb.get("holder_name") or vpa
+    opening = float(sb.get("balance") or 0)
+    with db_txn() as conn:
+        aid = acct_id(vpa)
+        conn.execute(
+            "INSERT OR REPLACE INTO accounts (vpa, holder_name, balance) VALUES (?,?,?)",
+            (vpa, holder, opening),
+        )
+        L.ensure_account(conn, aid, BANK_CODE, L.CUSTOMER, holder, vpa)
+        already = conn.execute(
+            "SELECT 1 FROM postings WHERE account_id=? LIMIT 1", (aid,)
+        ).fetchone()
+        if not already and L.to_paise(opening) > 0:
+            paise = L.to_paise(opening)
+            L.post_entry(
+                conn,
+                txn_ref=f"OPENING-{vpa}",
+                event_type="OPENING_BALANCE",
+                narration=f"Imported from Supabase for {vpa} with ₹{opening:,.2f}",
+                legs=[(f"{BANK_CODE}:OPENING", "DR", paise), (aid, "CR", paise)],
+            )
+    print(f"[bank] imported {vpa} from Supabase with ₹{opening:,.2f}", flush=True)
+    return True
+
+
 init_db()
 
 
@@ -280,7 +318,20 @@ def get_balance(vpa: str):
         if not row:
             sb_acc = supabase_db.get_payer_account(vpa)
             if sb_acc:
-                return sb_acc
+                # Project only the fields this endpoint is meant to expose. The
+                # row also carries the PIN, its hash and the lockout counters,
+                # and /balance is unauthenticated — returning it whole would
+                # hand any caller the PIN.
+                bal = float(sb_acc.get("balance") or 0)
+                return {
+                    "vpa": sb_acc.get("vpa", vpa),
+                    "holder_name": sb_acc.get("holder_name"),
+                    "balance": bal,
+                    "ledger_balance": bal,
+                    "available_balance": bal,
+                    "held": 0.0,
+                    "source": "supabase",
+                }
             raise HTTPException(404, "Account not found")
 
         aid = acct_id(vpa)
@@ -516,6 +567,22 @@ def debit(req: DebitRequest):
             return {"success": True, "status": "debited", "duplicate": True,
                     "message": "Already processed (idempotent)"}
         raise HTTPException(409, f"Transaction already exists with status: {ex['status']}")
+
+    # ------------------------------------------------------------------
+    # Phase 0.5: the payer must exist in the local ledger. Accounts that live
+    # only in Supabase can be read but not debited until they have a
+    # chart-of-accounts entry, so import them on first use.
+    # ------------------------------------------------------------------
+    conn = get_db()
+    try:
+        local_account = conn.execute("SELECT 1 FROM accounts WHERE vpa=?", (req.vpa,)).fetchone()
+        local_ledger = conn.execute(
+            "SELECT 1 FROM ledger_accounts WHERE account_id=?", (acct_id(req.vpa),)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not local_account or not local_ledger:
+        _import_supabase_account(req.vpa)
 
     # ------------------------------------------------------------------
     # Phase 1: authenticate. This makes a network call to the auth service,

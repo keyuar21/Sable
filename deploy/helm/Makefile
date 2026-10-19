@@ -37,8 +37,23 @@ images-push:
 # until they are loaded. Skipping this is why a rebuilt image can leave pods on
 # a stale one: `imagePullPolicy: IfNotPresent` matches the tag and never checks
 # the host.
+#
+# Each load is reported separately, and a failure aborts the target. Never
+# silence this (`>/dev/null 2>&1`): a failed load complains nowhere else. The
+# tag still resolves, the rollout still goes green, and the pods quietly keep
+# running the old code -- so a perfectly good fix looks like it did nothing.
 load:
-	@for i in $(IMAGES); do kind load docker-image $$i:$(TAG) --name $(KIND_CLUSTER); done
+	@for i in $(IMAGES); do \
+	  printf '  %-20s ' "$$i:$(TAG)"; \
+	  if kind load docker-image $$i:$(TAG) --name $(KIND_CLUSTER) >/tmp/load-$$i.log 2>&1; then \
+	    echo loaded; \
+	  else \
+	    echo FAILED; tail -5 /tmp/load-$$i.log; exit 1; \
+	  fi; \
+	done
+	@echo
+	@echo "  Run 'make restart' next, then prove the new code really is in the pod:"
+	@echo "  kubectl -n $(NS) exec deploy/upi-auth -- grep -c <symbol> /app/services/mock_auth/auth_service.py"
 
 # Loading an image does not touch running pods (same tag, IfNotPresent), so
 # force a rollout after `make load` to pick it up.

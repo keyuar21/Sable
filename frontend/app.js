@@ -6,17 +6,18 @@
 
 // ── API base URLs ─────────────────────────────────────────────────────────────
 // Read from config.js, which is mounted from the Helm ConfigMap in a container.
-// Falling back per key means a partial config still works. The fallbacks are the
-// Ingress URLs — what the browser can actually reach. They are NOT the in-cluster
-// Service DNS (upi-auth:5005), which only resolves inside the cluster.
+// The values are relative, same-origin paths: the browser talks to the host it
+// loaded the app from (upi-sim.local/api/psp, ...), whose certificate it already
+// trusts. Using a second host needs a second certificate exception, and fetch()
+// fails silently when the cert is untrusted — the classic "Failed to fetch".
 const RUNTIME = (typeof window !== 'undefined' && window.__UPI_CONFIG__) || {};
 const API = {
-  psp:       RUNTIME.psp       || 'https://api.upi-sim.local/psp',
-  switch:    RUNTIME.switch    || 'https://api.upi-sim.local/switch',
-  payerBank: RUNTIME.payerBank || 'https://api.upi-sim.local/payer',
-  payeeBank: RUNTIME.payeeBank || 'https://api.upi-sim.local/payee',
-  auth:      RUNTIME.auth      || 'https://api.upi-sim.local/auth',
-  recharge:  RUNTIME.recharge  || 'https://api.upi-sim.local/recharge',
+  psp:       RUNTIME.psp       || '/api/psp',
+  switch:    RUNTIME.switch    || '/api/switch',
+  payerBank: RUNTIME.payerBank || '/api/payer',
+  payeeBank: RUNTIME.payeeBank || '/api/payee',
+  auth:      RUNTIME.auth      || '/api/auth',
+  recharge:  RUNTIME.recharge  || '/api/recharge',
 };
 
 // ── App state ─────────────────────────────────────────────────────────────────

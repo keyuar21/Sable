@@ -5,13 +5,18 @@
  * environment without a rebuild. app.js falls back to these values if the file
  * is missing or a key is absent.
  *
- * These are the Ingress URLs, not the in-cluster Service DNS. This file is read
- * by the browser, which can reach api.upi-sim.local but not upi-auth:5005.
+ * The paths are relative on purpose. The browser calls the same origin it loaded
+ * the app from (the Ingress host), which:
+ *   - uses the certificate the browser already trusts (a second host means a
+ *     second exception, and fetch() fails silently without it), and
+ *   - is same-origin, so no CORS.
+ * Each Ingress rewrites /api/<svc> away before the request reaches the pod.
  */
 window.__UPI_CONFIG__ = {
-  psp:       'https://api.upi-sim.local/psp',
-  switch:    'https://api.upi-sim.local/switch',
-  payerBank: 'https://api.upi-sim.local/payer',
-  payeeBank: 'https://api.upi-sim.local/payee',
-  auth:      'https://api.upi-sim.local/auth',
+  psp:       '/api/psp',
+  switch:    '/api/switch',
+  payerBank: '/api/payer',
+  payeeBank: '/api/payee',
+  auth:      '/api/auth',
+  recharge:  '/api/recharge',
 };

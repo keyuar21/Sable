@@ -49,19 +49,20 @@ resources:
 ingress:
   enabled: true
   className: nginx
-  # app.js calls `${API.psp}/initiate`, `${API.psp}/transactions`, ... so the
-  # service is published under a path prefix that the rewrite strips before the
-  # request reaches the pod:
-  #   /psp/initiate  ->  /initiate
+  # app.js calls `${API.psp}/initiate`, ... Published on the SAME host as the
+  # app (upi-sim.local) under /api/psp: the browser already trusts that cert,
+  # and same-origin means no CORS and no second certificate to accept. The
+  # rewrite strips the prefix before the request reaches the pod:
+  #   /api/psp/initiate  ->  /initiate
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
   hosts:
-    - host: api.upi-sim.local
+    - host: upi-sim.local
       paths:
-        - path: /psp(/|$)(.*)
+        - path: /api/psp(/|$)(.*)
           pathType: ImplementationSpecific
   tls:
     - hosts:
-        - api.upi-sim.local
+        - upi-sim.local
       secretName: upi-sim-tls
