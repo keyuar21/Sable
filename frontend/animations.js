@@ -189,11 +189,48 @@
     });
   }
 
+  /* ── sign-in timeline: one active milestone ──────────────────────────────
+     The horizontal rail can show neighbouring portrait tiles while it moves,
+     but only the item nearest the visual centre is allowed to draw a stem and
+     reveal copy.  Updating the class when the nearest item changes restarts
+     the CSS hand-off exactly when that item becomes the focal point. */
+  function initTimelineFocus() {
+    var track = document.querySelector('.sable-tl-track');
+    if (!track || calm()) return;
+    var items = Array.prototype.slice.call(track.querySelectorAll('.sable-tmi'));
+    var active = null;
+
+    function sync() {
+      if (window.innerWidth >= 1024) {
+        var trackRect = track.getBoundingClientRect();
+        var center = trackRect.left + trackRect.width / 2;
+        var nearest = null;
+        var distance = Infinity;
+        items.forEach(function (item) {
+          var r = item.getBoundingClientRect();
+          var d = Math.abs((r.left + r.width / 2) - center);
+          if (d < distance) { distance = d; nearest = item; }
+        });
+        if (nearest && nearest !== active) {
+          if (active) active.classList.remove('is-center');
+          active = nearest;
+          active.classList.add('is-center');
+        }
+      } else if (active) {
+        active.classList.remove('is-center');
+        active = null;
+      }
+      requestAnimationFrame(sync);
+    }
+    requestAnimationFrame(sync);
+  }
+
   /* ── boot ──────────────────────────────────────────────────────────────── */
   function init() {
     initMoney();
     initTilt();
     initSideGlow();
+    initTimelineFocus();
   }
 
   if (document.readyState === 'loading') {

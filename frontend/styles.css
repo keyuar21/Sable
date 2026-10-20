@@ -3016,8 +3016,11 @@ html, body {
     position: relative; align-self: stretch;
     min-height: 380px;
   }
-  .sable-side-inner { position: relative; z-index: 2; max-width: 356px;
-                      padding-left: clamp(4px, 1.6vw, 26px); }
+  .sable-side-inner {
+    position: relative; z-index: 2; width: 100%; height: 100%;
+    display: flex; flex-direction: column; justify-content: center;
+    padding-left: clamp(10px, 1.8vw, 30px); padding-right: 6px;
+  }
 
   /* Entrances */
   .sable-side-inner > * { animation: rise 560ms var(--ease-out) both; }
@@ -3050,48 +3053,166 @@ html, body {
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
-.sable-lede {
-  font-size: clamp(13.5px, .92vw, 16px);
-  line-height: 1.66; color: var(--text-2);
-  margin-bottom: 26px; max-width: 40ch;
+.sable-tl {
+  flex: 1;
+  min-height: 280px;
+  margin: 26px 0 22px;
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 108%, rgba(109,91,245,.10), transparent 62%),
+    radial-gradient(90% 70% at 84% -8%, rgba(245,183,78,.07), transparent 60%),
+    rgba(9, 11, 18, .55);
+  border: 1px solid rgba(255,255,255,.07);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
 }
 
-.sable-points { display: flex; flex-direction: column; gap: 14px; margin-bottom: 34px; }
-.sable-points li { display: flex; align-items: center; gap: 11px; font-size: 12.5px; color: var(--text-2); }
-.sable-points .icon { width: 16px; height: 16px; color: var(--accent-2); flex: none; }
+.sable-tl-head {
+  position: absolute; top: 14px; left: 18px; right: 18px; z-index: 2;
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--text-3);
+  text-shadow: 0 1px 10px rgba(7,8,12,.9);
+}
+
+.sable-tl-track {
+  position: absolute; top: 44px; right: 0; bottom: 16px; left: 0;
+}
+
+/* The axis: one glowing line across the panel */
+.sable-tl-line {
+  position: absolute; left: 0; right: 0; top: 50%; height: 1.5px;
+  background: linear-gradient(90deg,
+    transparent, rgba(109,91,245,.55) 14%,
+    rgba(245,183,78,.6) 62%, rgba(155,123,255,.5) 86%, transparent);
+  box-shadow: 0 0 14px rgba(245,183,78,.28);
+}
+
+/* The strip: milestones duplicated x2; each step lands at exactly
+   half the strip width, so the loop never shows a seam */
+.sable-tl-strip {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  display: flex; width: max-content;
+  animation: tl-step 19.6s linear infinite;
+  will-change: transform;
+}
+@keyframes tl-step {
+  0.00% { transform: translateX(-0px); animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+  3.06% { transform: translateX(-240px); }
+  14.29% { transform: translateX(-240px); animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+  17.35% { transform: translateX(-480px); }
+  28.57% { transform: translateX(-480px); animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+  31.63% { transform: translateX(-720px); }
+  42.86% { transform: translateX(-720px); animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+  45.92% { transform: translateX(-960px); }
+  57.14% { transform: translateX(-960px); animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+  60.20% { transform: translateX(-1200px); }
+  71.43% { transform: translateX(-1200px); animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+  74.49% { transform: translateX(-1440px); }
+  85.71% { transform: translateX(-1440px); animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+  88.78% { transform: translateX(-1680px); }
+  100% { transform: translateX(-1680px); }
+}
+
+.sable-tmi {
+  position: relative; flex: none; width: 240px; height: 100%;
+}
+
+/* Portrait sitting on the rail: catches the ring light when its
+   milestone becomes the newest step */
+.sable-face {
+  position: absolute; left: 15px; top: 50%; z-index: 2;
+  width: 34px; height: 34px; border-radius: 50%;
+  background-size: cover; background-position: center;
+  border: 1.5px solid rgba(255,255,255,.28);
+  box-shadow:
+    0 0 0 2px rgba(109,91,245,.55),
+    0 0 12px rgba(245,183,78,.35);
+  animation: tl-pop 19.6s linear infinite;
+  animation-delay: var(--ph);
+}
+.f-you { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2230%25%22%20cy%3D%2218%25%22%20r%3D%2295%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236D5BF5%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%232c2350%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22s%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23E8B98F%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23C68F5D%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2280%22%20height%3D%2280%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2244%22%20r%3D%2230%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.05%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2298%22%20rx%3D%2235%22%20ry%3D%2231%22%20fill%3D%22%23232a3d%22%2F%3E%3Cpath%20d%3D%22M31%2088%20Q40%2098%2049%2088%20L49%20101%20L31%20101%20Z%22%20fill%3D%22%23F2544B%22%2F%3E%3Cpath%20d%3D%22M35%2052%20h10%20v11%20q-5%205%20-10%200%20Z%22%20fill%3D%22%23C68F5D%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2239%22%20rx%3D%2214.5%22%20ry%3D%2216.5%22%20fill%3D%22url(%23s)%22%2F%3E%3Cellipse%20cx%3D%2234%22%20cy%3D%2234%22%20rx%3D%229%22%20ry%3D%2211%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.10%22%2F%3E%3Cpath%20d%3D%22M25.3%2040%20C25.3%2022.5%2054.7%2022.5%2054.7%2040%20L54.7%2033.5%20C53.4%2026.4%2047.4%2020.4%2040%2020.4%20C32.6%2020.4%2026.6%2026.4%2025.3%2033.5%20Z%22%20fill%3D%22%2317151d%22%2F%3E%3Cellipse%20cx%3D%2234.2%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cellipse%20cx%3D%2245.8%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M31.2%2035.6%20Q34.2%2033.8%2037.2%2035.2%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M42.8%2035.2%20Q45.8%2033.8%2048.8%2035.6%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M36%2047.5%20Q40%2050.6%2044%2047.5%22%20stroke%3D%22%233a2a1e%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M54.5%2034%20A15.8%2018%200%200%200%2048.5%2024.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.6%22%20opacity%3D%220.35%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
+.f-maya { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2230%25%22%20cy%3D%2218%25%22%20r%3D%2295%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23F5B74E%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%236d4b12%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22s%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23F2C6A0%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D99A6C%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2280%22%20height%3D%2280%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2244%22%20r%3D%2230%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.05%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2298%22%20rx%3D%2235%22%20ry%3D%2231%22%20fill%3D%22%232c2f3a%22%2F%3E%3Cpath%20d%3D%22M31%2088%20Q40%2098%2049%2088%20L49%20101%20L31%20101%20Z%22%20fill%3D%22%23EFF1F8%22%2F%3E%3Cpath%20d%3D%22M35%2052%20h10%20v11%20q-5%205%20-10%200%20Z%22%20fill%3D%22%23D99A6C%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2239%22%20rx%3D%2214.5%22%20ry%3D%2216.5%22%20fill%3D%22url(%23s)%22%2F%3E%3Cellipse%20cx%3D%2234%22%20cy%3D%2234%22%20rx%3D%229%22%20ry%3D%2211%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.10%22%2F%3E%3Cpath%20d%3D%22M24.4%2042%20C24.4%2021.5%2055.6%2021.5%2055.6%2042%20C55.6%2030%2050.4%2022.3%2040%2022.3%20C29.6%2022.3%2024.4%2030%2024.4%2042%20Z%22%20fill%3D%22%232b1d16%22%2F%3E%3Cpath%20d%3D%22M24.4%2040%20L24.4%2049%20Q27%2050.5%2028%2048%20Q25.6%2044%2026.6%2038%20Z%22%20fill%3D%22%232b1d16%22%2F%3E%3Cpath%20d%3D%22M55.6%2040%20L55.6%2049%20Q53%2050.5%2052%2048%20Q54.4%2044%2053.4%2038%20Z%22%20fill%3D%22%232b1d16%22%2F%3E%3Cellipse%20cx%3D%2234.2%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cellipse%20cx%3D%2245.8%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M31.2%2035.6%20Q34.2%2033.8%2037.2%2035.2%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M42.8%2035.2%20Q45.8%2033.8%2048.8%2035.6%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M36%2047.5%20Q40%2050.6%2044%2047.5%22%20stroke%3D%22%233a2a1e%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Ccircle%20cx%3D%2234.2%22%20cy%3D%2240.3%22%20r%3D%225.2%22%20fill%3D%22none%22%20stroke%3D%22%23141821%22%20stroke-width%3D%221.4%22%2F%3E%3Ccircle%20cx%3D%2245.8%22%20cy%3D%2240.3%22%20r%3D%225.2%22%20fill%3D%22none%22%20stroke%3D%22%23141821%22%20stroke-width%3D%221.4%22%2F%3E%3Cpath%20d%3D%22M39.4%2040.3%20L40.6%2040.3%20M29%2039.4%20L26.6%2038.4%20M51%2039.4%20L53.4%2038.4%22%20stroke%3D%22%23141821%22%20stroke-width%3D%221.3%22%2F%3E%3Cpath%20d%3D%22M54.5%2034%20A15.8%2018%200%200%200%2048.5%2024.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.6%22%20opacity%3D%220.35%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
+.f-priya { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2230%25%22%20cy%3D%2218%25%22%20r%3D%2295%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%239B7BFF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233c2f68%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22s%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23D9926A%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23B97449%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2280%22%20height%3D%2280%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2244%22%20r%3D%2230%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.05%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2298%22%20rx%3D%2235%22%20ry%3D%2231%22%20fill%3D%22%231d2027%22%2F%3E%3Cpath%20d%3D%22M31%2088%20Q40%2098%2049%2088%20L49%20101%20L31%20101%20Z%22%20fill%3D%22%238b5cf6%22%2F%3E%3Cpath%20d%3D%22M35%2052%20h10%20v11%20q-5%205%20-10%200%20Z%22%20fill%3D%22%23B97449%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2239%22%20rx%3D%2214.5%22%20ry%3D%2216.5%22%20fill%3D%22url(%23s)%22%2F%3E%3Cellipse%20cx%3D%2234%22%20cy%3D%2234%22%20rx%3D%229%22%20ry%3D%2211%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.10%22%2F%3E%3Cpath%20d%3D%22M24.4%2042%20C24.4%2021.5%2055.6%2021.5%2055.6%2042%20C55.6%2030%2050.4%2022.3%2040%2022.3%20C29.6%2022.3%2024.4%2030%2024.4%2042%20Z%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M24.4%2040%20L24.4%2049%20Q27%2050.5%2028%2048%20Q25.6%2044%2026.6%2038%20Z%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M55.6%2040%20L55.6%2049%20Q53%2050.5%2052%2048%20Q54.4%2044%2053.4%2038%20Z%22%20fill%3D%22%23241a12%22%2F%3E%3Cellipse%20cx%3D%2234.2%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cellipse%20cx%3D%2245.8%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M31.2%2035.6%20Q34.2%2033.8%2037.2%2035.2%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M42.8%2035.2%20Q45.8%2033.8%2048.8%2035.6%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M36%2047.5%20Q40%2050.6%2044%2047.5%22%20stroke%3D%22%233a2a1e%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M54.5%2034%20A15.8%2018%200%200%200%2048.5%2024.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.6%22%20opacity%3D%220.35%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
+.f-ravi { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2230%25%22%20cy%3D%2218%25%22%20r%3D%2295%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233b4470%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23121527%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22s%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23C98E5F%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23A06B3C%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2280%22%20height%3D%2280%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2244%22%20r%3D%2230%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.05%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2298%22%20rx%3D%2235%22%20ry%3D%2231%22%20fill%3D%22%232f3446%22%2F%3E%3Cpath%20d%3D%22M31%2088%20Q40%2098%2049%2088%20L49%20101%20L31%20101%20Z%22%20fill%3D%22%23F2544B%22%2F%3E%3Cpath%20d%3D%22M35%2052%20h10%20v11%20q-5%205%20-10%200%20Z%22%20fill%3D%22%23A06B3C%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2239%22%20rx%3D%2214.5%22%20ry%3D%2216.5%22%20fill%3D%22url(%23s)%22%2F%3E%3Cellipse%20cx%3D%2234%22%20cy%3D%2234%22%20rx%3D%229%22%20ry%3D%2211%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.10%22%2F%3E%3Cpath%20d%3D%22M25.3%2040%20C25.3%2022.5%2054.7%2022.5%2054.7%2040%20L54.7%2033.5%20C53.4%2026.4%2047.4%2020.4%2040%2020.4%20C32.6%2020.4%2026.6%2026.4%2025.3%2033.5%20Z%22%20fill%3D%22%23241c15%22%2F%3E%3Cpath%20d%3D%22M26.5%2040%20C26.5%2052.5%2032%2057.5%2040%2057.5%20C48%2057.5%2053.5%2052.5%2053.5%2040%20C53.5%2046%2047%2044.5%2040%2044.5%20C33%2044.5%2026.5%2046%2026.5%2040%20Z%22%20fill%3D%22%23241c15%22%2F%3E%3Cellipse%20cx%3D%2234.2%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cellipse%20cx%3D%2245.8%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M31.2%2035.6%20Q34.2%2033.8%2037.2%2035.2%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M42.8%2035.2%20Q45.8%2033.8%2048.8%2035.6%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M36%2047.5%20Q40%2050.6%2044%2047.5%22%20stroke%3D%22%233a2a1e%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Ccircle%20cx%3D%2234.2%22%20cy%3D%2240.3%22%20r%3D%225.2%22%20fill%3D%22none%22%20stroke%3D%22%23141821%22%20stroke-width%3D%221.4%22%2F%3E%3Ccircle%20cx%3D%2245.8%22%20cy%3D%2240.3%22%20r%3D%225.2%22%20fill%3D%22none%22%20stroke%3D%22%23141821%22%20stroke-width%3D%221.4%22%2F%3E%3Cpath%20d%3D%22M39.4%2040.3%20L40.6%2040.3%20M29%2039.4%20L26.6%2038.4%20M51%2039.4%20L53.4%2038.4%22%20stroke%3D%22%23141821%22%20stroke-width%3D%221.3%22%2F%3E%3Cpath%20d%3D%22M54.5%2034%20A15.8%2018%200%200%200%2048.5%2024.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.6%22%20opacity%3D%220.35%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
+.f-sneha { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2230%25%22%20cy%3D%2218%25%22%20r%3D%2295%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23B08CF0%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%234a3a80%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22s%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23E8B98F%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23C68F5D%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2280%22%20height%3D%2280%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2244%22%20r%3D%2230%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.05%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2298%22%20rx%3D%2235%22%20ry%3D%2231%22%20fill%3D%22%2323283a%22%2F%3E%3Cpath%20d%3D%22M31%2088%20Q40%2098%2049%2088%20L49%20101%20L31%20101%20Z%22%20fill%3D%22%23F5B74E%22%2F%3E%3Cpath%20d%3D%22M35%2052%20h10%20v11%20q-5%205%20-10%200%20Z%22%20fill%3D%22%23C68F5D%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2239%22%20rx%3D%2214.5%22%20ry%3D%2216.5%22%20fill%3D%22url(%23s)%22%2F%3E%3Cellipse%20cx%3D%2234%22%20cy%3D%2234%22%20rx%3D%229%22%20ry%3D%2211%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.10%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2217.5%22%20r%3D%226.5%22%20fill%3D%22%234a2f1c%22%2F%3E%3Cpath%20d%3D%22M25.3%2036%20C25.3%2021.5%2054.7%2021.5%2054.7%2036%20L54.7%2031%20C52%2026%2046.8%2022.6%2040%2022.6%20C33.2%2022.6%2028%2026%2025.3%2031%20Z%22%20fill%3D%22%234a2f1c%22%2F%3E%3Cellipse%20cx%3D%2234.2%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cellipse%20cx%3D%2245.8%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M31.2%2035.6%20Q34.2%2033.8%2037.2%2035.2%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M42.8%2035.2%20Q45.8%2033.8%2048.8%2035.6%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M36%2047.5%20Q40%2050.6%2044%2047.5%22%20stroke%3D%22%233a2a1e%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M54.5%2034%20A15.8%2018%200%200%200%2048.5%2024.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.6%22%20opacity%3D%220.35%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
+.f-dev { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2230%25%22%20cy%3D%2218%25%22%20r%3D%2295%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23F5C169%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%237a571c%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22s%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23B57A4F%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%238f5c38%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2280%22%20height%3D%2280%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2244%22%20r%3D%2230%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.05%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2298%22%20rx%3D%2235%22%20ry%3D%2231%22%20fill%3D%22%23EFEAF9%22%2F%3E%3Cpath%20d%3D%22M31%2088%20Q40%2098%2049%2088%20L49%20101%20L31%20101%20Z%22%20fill%3D%22%23D8CFE7%22%2F%3E%3Cpath%20d%3D%22M35%2052%20h10%20v11%20q-5%205%20-10%200%20Z%22%20fill%3D%22%238f5c38%22%2F%3E%3Cellipse%20cx%3D%2240%22%20cy%3D%2239%22%20rx%3D%2214.5%22%20ry%3D%2216.5%22%20fill%3D%22url(%23s)%22%2F%3E%3Cellipse%20cx%3D%2234%22%20cy%3D%2234%22%20rx%3D%229%22%20ry%3D%2211%22%20fill%3D%22%23ffffff%22%20opacity%3D%220.10%22%2F%3E%3Cpath%20d%3D%22M25.3%2040%20C25.3%2022.5%2054.7%2022.5%2054.7%2040%20L54.7%2033.5%20C53.4%2026.4%2047.4%2020.4%2040%2020.4%20C32.6%2020.4%2026.6%2026.4%2025.3%2033.5%20Z%22%20fill%3D%22%231d150e%22%2F%3E%3Cpath%20d%3D%22M26.5%2040%20C26.5%2052.5%2032%2057.5%2040%2057.5%20C48%2057.5%2053.5%2052.5%2053.5%2040%20C53.5%2046%2047%2044.5%2040%2044.5%20C33%2044.5%2026.5%2046%2026.5%2040%20Z%22%20fill%3D%22%231d150e%22%2F%3E%3Cellipse%20cx%3D%2234.2%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cellipse%20cx%3D%2245.8%22%20cy%3D%2240.5%22%20rx%3D%221.7%22%20ry%3D%222.3%22%20fill%3D%22%23241a12%22%2F%3E%3Cpath%20d%3D%22M31.2%2035.6%20Q34.2%2033.8%2037.2%2035.2%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M42.8%2035.2%20Q45.8%2033.8%2048.8%2035.6%22%20stroke%3D%22%23241a12%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M36%2047.5%20Q40%2050.6%2044%2047.5%22%20stroke%3D%22%233a2a1e%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M54.5%2034%20A15.8%2018%200%200%200%2048.5%2024.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.6%22%20opacity%3D%220.35%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
+@keyframes tl-pop {
+  0%    { transform: translateY(-50%) scale(1);    box-shadow: 0 0 0 2px rgba(109,91,245,.55), 0 0 12px rgba(245,183,78,.35); }
+  2%    { transform: translateY(-50%) scale(1.14); box-shadow: 0 0 0 2px rgba(245,183,78,.85), 0 0 18px rgba(245,183,78,.75); }
+  12%   { transform: translateY(-50%) scale(1);    box-shadow: 0 0 0 2px rgba(109,91,245,.55), 0 0 12px rgba(245,183,78,.35); }
+  100%  { transform: translateY(-50%) scale(1);    box-shadow: 0 0 0 2px rgba(109,91,245,.55), 0 0 12px rgba(245,183,78,.35); }
+}
+
+/* The stem that ties a portrait to its card (above or below the axis) */
+.sable-ms {
+  position: absolute; left: 31.25px; width: 1.5px; z-index: 1;
+  background: rgba(245,183,78,.42);
+}
+.sable-tmi:nth-child(odd)  .sable-ms { bottom: 50%; height: 42px; }
+.sable-tmi:nth-child(even) .sable-ms { top: 50%; height: 42px; }
+
+/* The milestone card, with a subtle "just arrived" emphasis wave */
+.sable-tlc {
+  position: absolute; left: 52px; width: 172px;
+  z-index: 1;
+  animation: tl-live 19.6s linear infinite;
+  animation-delay: var(--ph);
+}
+.sable-tmi:nth-child(odd)  .sable-tlc { bottom: calc(50% + 18px); }
+.sable-tmi:nth-child(even) .sable-tlc { top:    calc(50% + 18px); }
+@keyframes tl-live {
+  0%   { opacity: 1; }
+  14%  { opacity: .92; }
+  86%  { opacity: .8;  }
+  100% { opacity: 1; }
+}
+
+.sable-tlt {
+  display: block;
+  font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: #F5B74E;
+  text-shadow: 0 1px 10px rgba(7,8,12,.85);
+}
+.sable-tlh {
+  display: block; margin-top: 4px;
+  font-size: 14px; font-weight: 700; color: var(--text-1); letter-spacing: .01em;
+  text-shadow: 0 1px 12px rgba(7,8,12,.9);
+}
+.sable-tlc p {
+  margin: 5px 0 0; padding: 0;
+  font-size: 10.5px; line-height: 1.5; color: var(--text-2);
+  text-shadow: 0 1px 10px rgba(7,8,12,.85);
+}
+.sable-pill {
+  display: inline-block; margin-top: 7px;
+  font-size: 8px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: #F5B74E;
+  border: 1px solid rgba(245,183,78,.35);
+  background: rgba(245,183,78,.07);
+  padding: 2.5px 9px; border-radius: 999px;
+  text-shadow: 0 1px 8px rgba(7,8,12,.8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sable-tl-strip,
+  .sable-face,
+  .sable-tlc { animation: none; }
+}
 
 .sable-foot {
   display: flex; align-items: center; gap: 9px;
   font-size: 10px; letter-spacing: 1.4px; font-weight: 600;
   color: var(--text-3); text-transform: uppercase;
   padding-top: 18px; border-top: 1px solid var(--hairline);
-  max-width: 300px;
+  max-width: 300px; flex: none; margin-top: 2px;
 }
 .sable-live { display: inline-flex; align-items: center; gap: 7px; color: #5FD39A; }
 .sable-live i {
   width: 6px; height: 6px; background: var(--green); border-radius: 50%;
   box-shadow: 0 0 10px var(--green-glow);
   animation: pulse-dot 2.6s var(--ease-io) infinite;
-}
-
-/* ── The drifting glyphs ─────────────────────────────────────────────────
-   Twelve icons from the app's own family, hand-placed along the two outer
-   bands so they never sit under the copy. Negative delays mean they are
-   already mid-drift at load — never a composition that wakes up empty. */
-.sable-drift { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.drift-item {
-  position: absolute; color: var(--text);
-  opacity: var(--o, .12);
-  animation: drift-float var(--d, 30s) var(--ease-io) infinite alternate;
-  animation-delay: var(--delay, -3s);
-  will-change: transform;
-}
-.drift-item .icon { width: 100%; height: 100%; stroke-width: 1.5; }
-.drift-accent { color: var(--accent-2); }
-.drift-gold   { color: var(--gold); }
-@keyframes drift-float {
-  from { transform: translate3d(0, 16px, 0); }
-  to   { transform: translate3d(0, -16px, 0); }
 }
 
 /* ── Pointer light ───────────────────────────────────────────────────────
@@ -3108,5 +3229,199 @@ html, body {
 .sable-side:hover .sable-side-glow { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .sable-side-glow, .sable-drift { display: none; }
+  .sable-side-glow { display: none; }
+}
+
+/* Login timeline refinement: each incoming event draws its own connector
+   from the rail outward; its content appears only after the line finishes. */
+@media (min-width: 1024px) {
+  .sable-tl-track::after { display: none; }
+
+  /* Real portraits are deliberately square tiles, not avatar circles. */
+  .sable-face {
+    left: 0; width: 64px; height: 64px;
+    border-radius: 2px;
+    box-shadow:
+      0 0 0 2px rgba(109,91,245,.7),
+      0 0 18px rgba(245,183,78,.48);
+  }
+  /* Alternate the large tiles around the rail: up, down, up, down. */
+  .sable-tmi:nth-child(odd) .sable-face { top: calc(50% - 116px); }
+  .sable-tmi:nth-child(even) .sable-face { top: calc(50% + 70px); }
+
+  .sable-ms {
+    left: 31px;
+    height: 52px !important;
+    background: linear-gradient(to top, rgba(245,183,78,.96), rgba(155,123,255,.72));
+    box-shadow: 0 0 10px rgba(245,183,78,.48);
+    opacity: 0;
+    transform: scaleY(0);
+    animation: sable-line-grow 19.6s cubic-bezier(.22,.61,.36,1) infinite both;
+  }
+  .sable-tmi:nth-child(odd) .sable-ms { transform-origin: bottom; }
+  .sable-tmi:nth-child(even) .sable-ms { transform-origin: top; }
+
+  .sable-tlc {
+    opacity: 0;
+    animation-duration: 19.6s;
+    animation-timing-function: cubic-bezier(.22,.61,.36,1);
+    animation-iteration-count: infinite;
+    animation-fill-mode: both;
+  }
+  .sable-tmi:nth-child(odd) .sable-tlc { animation-name: sable-card-reveal-up; }
+  .sable-tmi:nth-child(even) .sable-tlc { animation-name: sable-card-reveal-down; }
+  .sable-tmi:nth-child(odd) .sable-tlc { bottom: calc(50% + 61px); }
+  .sable-tmi:nth-child(even) .sable-tlc { top: calc(50% + 61px); }
+
+  /* A step lasts 2.8s. Duplicate nodes share the same phase, preserving
+     the seamless horizontal loop after the first seven milestones. */
+  .sable-tmi:nth-child(1)  .sable-ms, .sable-tmi:nth-child(1)  .sable-tlc,
+  .sable-tmi:nth-child(8)  .sable-ms, .sable-tmi:nth-child(8)  .sable-tlc { animation-delay: 0s; }
+  .sable-tmi:nth-child(2)  .sable-ms, .sable-tmi:nth-child(2)  .sable-tlc,
+  .sable-tmi:nth-child(9)  .sable-ms, .sable-tmi:nth-child(9)  .sable-tlc { animation-delay: 2.8s; }
+  .sable-tmi:nth-child(3)  .sable-ms, .sable-tmi:nth-child(3)  .sable-tlc,
+  .sable-tmi:nth-child(10) .sable-ms, .sable-tmi:nth-child(10) .sable-tlc { animation-delay: 5.6s; }
+  .sable-tmi:nth-child(4)  .sable-ms, .sable-tmi:nth-child(4)  .sable-tlc,
+  .sable-tmi:nth-child(11) .sable-ms, .sable-tmi:nth-child(11) .sable-tlc { animation-delay: 8.4s; }
+  .sable-tmi:nth-child(5)  .sable-ms, .sable-tmi:nth-child(5)  .sable-tlc,
+  .sable-tmi:nth-child(12) .sable-ms, .sable-tmi:nth-child(12) .sable-tlc { animation-delay: 11.2s; }
+  .sable-tmi:nth-child(6)  .sable-ms, .sable-tmi:nth-child(6)  .sable-tlc,
+  .sable-tmi:nth-child(13) .sable-ms, .sable-tmi:nth-child(13) .sable-tlc { animation-delay: 14s; }
+  .sable-tmi:nth-child(7)  .sable-ms, .sable-tmi:nth-child(7)  .sable-tlc,
+  .sable-tmi:nth-child(14) .sable-ms, .sable-tmi:nth-child(14) .sable-tlc { animation-delay: 16.8s; }
+
+  /* Keep the hand-off motion legible while the rail slides: all upward
+     milestones redraw together, then all downward milestones redraw. */
+  .sable-ms { animation: sable-line-handoff 3.2s cubic-bezier(.22,.61,.36,1) infinite both; }
+  .sable-tlc { animation-duration: 3.2s; }
+  .sable-tmi:nth-child(odd) .sable-tlc { animation-name: sable-card-handoff-up; }
+  .sable-tmi:nth-child(even) .sable-tlc { animation-name: sable-card-handoff-down; }
+  .sable-tmi:nth-child(odd) .sable-ms,
+  .sable-tmi:nth-child(odd) .sable-tlc { animation-delay: 0s !important; }
+  .sable-tmi:nth-child(even) .sable-ms,
+  .sable-tmi:nth-child(even) .sable-tlc { animation-delay: 1.6s !important; }
+
+  /* Only the milestone at the rail's centre is a live hand-off. The nearby
+     tiles remain part of the moving strip, but do not compete for attention. */
+  .sable-tmi:not(.is-center) .sable-ms,
+  .sable-tmi:not(.is-center) .sable-tlc {
+    visibility: hidden;
+    opacity: 0;
+    animation: none !important;
+  }
+  /* Keep the passing portrait tiles visible, but reserve the vertical
+     connector and its copy for the tile that is actually in the centre. */
+  .sable-tmi:not(.is-center) .sable-face {
+    visibility: visible;
+    opacity: .62;
+    filter: saturate(.72) brightness(.82);
+    animation: none;
+  }
+  .sable-tmi.is-center .sable-face {
+    visibility: visible;
+    opacity: 1;
+    animation: none;
+  }
+  .sable-tmi.is-center .sable-ms {
+    visibility: visible;
+    animation: sable-line-center .8s cubic-bezier(.22,.61,.36,1) both !important;
+  }
+  .sable-tmi.is-center:nth-child(odd) .sable-tlc {
+    visibility: visible;
+    animation: sable-card-center-up .8s cubic-bezier(.22,.61,.36,1) both !important;
+  }
+  .sable-tmi.is-center:nth-child(even) .sable-tlc {
+    visibility: visible;
+    animation: sable-card-center-down .8s cubic-bezier(.22,.61,.36,1) both !important;
+  }
+
+  /* With the larger square tile, begin a downward hand-off below the tile
+     instead of behind it, then place the text after the line has landed. */
+  .sable-tmi:nth-child(even) .sable-ms {
+    top: calc(50% + 10px);
+    height: 52px !important;
+    background: linear-gradient(to bottom, rgba(245,183,78,.98), rgba(155,123,255,.74));
+  }
+  .sable-tmi:nth-child(even) .sable-tlc { top: calc(50% + 138px); }
+  .sable-tmi:nth-child(odd) .sable-tlc { bottom: calc(50% + 124px); }
+  /* Downward events keep their text beside the lower tile, avoiding a
+     clipped stack at the bottom of shorter desktop viewports. */
+  .sable-tmi:nth-child(even) .sable-tlc {
+    left: 78px;
+    top: calc(50% + 70px);
+  }
+
+  .sable-face.f-you   { background-image: url('assets/timeline-voice-payment.png'); }
+  .sable-face.f-maya  { background-image: url('assets/timeline-mobile-payment.png'); }
+  .sable-face.f-priya { background-image: url('assets/timeline-shared-payment.png'); }
+  .sable-face.f-ravi  { background-image: url('assets/timeline-payment-terminal.png'); }
+  .sable-face.f-sneha { background-image: url('assets/timeline-tap-to-pay.png'); }
+  .sable-face.f-dev   { background-image: url('assets/timeline-voice-payment.png'); }
+
+  /* The rail is duplicated for a seamless loop. Rotate the supplied images
+     by position so adjacent, simultaneously visible tiles never repeat. */
+  .sable-tmi:nth-child(1)  .sable-face { background-image: url('assets/timeline-voice-payment.png'); }
+  .sable-tmi:nth-child(2)  .sable-face { background-image: url('assets/timeline-mobile-payment.png'); }
+  .sable-tmi:nth-child(3)  .sable-face { background-image: url('assets/timeline-shared-payment.png'); }
+  .sable-tmi:nth-child(4)  .sable-face { background-image: url('assets/timeline-payment-terminal.png'); }
+  .sable-tmi:nth-child(5)  .sable-face { background-image: url('assets/timeline-tap-to-pay.png'); }
+  .sable-tmi:nth-child(6)  .sable-face { background-image: url('assets/timeline-voice-payment.png'); }
+  .sable-tmi:nth-child(7)  .sable-face { background-image: url('assets/timeline-mobile-payment.png'); }
+  .sable-tmi:nth-child(8)  .sable-face { background-image: url('assets/timeline-shared-payment.png'); }
+  .sable-tmi:nth-child(9)  .sable-face { background-image: url('assets/timeline-payment-terminal.png'); }
+  .sable-tmi:nth-child(10) .sable-face { background-image: url('assets/timeline-tap-to-pay.png'); }
+  .sable-tmi:nth-child(11) .sable-face { background-image: url('assets/timeline-voice-payment.png'); }
+  .sable-tmi:nth-child(12) .sable-face { background-image: url('assets/timeline-mobile-payment.png'); }
+  .sable-tmi:nth-child(13) .sable-face { background-image: url('assets/timeline-shared-payment.png'); }
+  .sable-tmi:nth-child(14) .sable-face { background-image: url('assets/timeline-payment-terminal.png'); }
+}
+
+@keyframes sable-line-grow {
+  0%, 1.5% { opacity: 0; transform: scaleY(0); }
+  2% { opacity: 1; }
+  /* A deliberately readable 1.6s draw, rather than a flash. */
+  10% { opacity: 1; transform: scaleY(1); }
+  /* Keep the completed line on-screen for the rest of this milestone's
+     pass; it resets only when the seamless 19.6s loop begins again. */
+  100% { opacity: .7; transform: scaleY(1); }
+}
+@keyframes sable-line-handoff {
+  0%, 6% { opacity: 0; transform: scaleY(0); }
+  55% { opacity: 1; transform: scaleY(1); }
+  100% { opacity: .78; transform: scaleY(1); }
+}
+@keyframes sable-line-center {
+  0%, 5% { opacity: 0; transform: scaleY(0); }
+  48% { opacity: 1; transform: scaleY(1); }
+  100% { opacity: .9; transform: scaleY(1); }
+}
+@keyframes sable-card-reveal-up {
+  0%, 10% { opacity: 0; transform: translateY(8px); }
+  10.8%, 100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes sable-card-reveal-down {
+  0%, 10% { opacity: 0; transform: translateY(-8px); }
+  10.8%, 100% { opacity: 1; transform: translateY(0); }
+}
+/* The shorter repeating hand-off waits until the growing line has reached
+   its destination before allowing the card to appear. */
+@keyframes sable-card-handoff-up {
+  0%, 55% { opacity: 0; transform: translateY(8px); }
+  61%, 100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes sable-card-handoff-down {
+  0%, 55% { opacity: 0; transform: translateY(-8px); }
+  61%, 100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes sable-card-center-up {
+  0%, 50% { opacity: 0; transform: translateY(8px); }
+  60%, 100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes sable-card-center-down {
+  0%, 50% { opacity: 0; transform: translateY(-8px); }
+  60%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sable-ms, .sable-tlc { animation: none; opacity: 1; transform: none; }
 }

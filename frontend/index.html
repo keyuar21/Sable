@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Sable — Voice Payments</title>
   <meta name="description" content="Sable — a polished voice-first UPI payments app.">
-  <link rel="stylesheet" href="styles.css?v=ux-12">
+  <link rel="stylesheet" href="styles.css?v=ux-21">
 </head>
 <body>
 
@@ -63,6 +63,7 @@
         <div class="sable-side" id="sable-side">
 
           <div class="sable-side-inner">
+
             <div class="sable-wordmark">
               <div class="logo-icon"><span></span><span></span><span></span></div>
               <span class="sable-brand-name">Sable<b>.</b></span>
@@ -70,16 +71,148 @@
 
             <h1 class="sable-h1"><span class="sable-sheen">Pay the way</span><br>you speak.</h1>
 
-            <p class="sable-lede">
-              Authorise money with your voice. The words, the tone and the challenge
-              digits are yours alone — there is nothing static for anyone to steal.
-            </p>
-
-            <ul class="sable-points">
-              <li><svg class="icon" aria-hidden="true"><use href="#ic-mic"/></svg><span>Voice-first — say a payee and an amount</span></li>
-              <li><svg class="icon" aria-hidden="true"><use href="#ic-shield"/></svg><span>Live challenge — fresh digits every payment</span></li>
-              <li><svg class="icon" aria-hidden="true"><use href="#ic-checkCircle"/></svg><span>Biometric-grade — your voice, your face</span></li>
-            </ul>
+            <!-- A single milestone timeline: one glowing axis, every
+                milestone wearing a portrait that sits on the rail (locally
+                generated SVG data-URIs -- no network fetch), plus a feature
+                pill per step. Pure CSS keyframes: it steps forward a
+                milestone at a time, forever. -->
+            <div class="sable-tl" aria-hidden="true">
+              <div class="sable-tl-head">
+                <span>How a voice payment runs</span>
+                <span>End to end &lt; 1 s</span>
+              </div>
+              <div class="sable-tl-track">
+                <i class="sable-tl-line"></i>
+                <div class="sable-tl-strip">
+                <div class="sable-tmi" style="--ph: -0s">
+                  <i class="sable-face f-you"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.0s</span>
+                    <span class="sable-tlh">You speak</span>
+                    <p>Say “Pay ₹240 to Swiggy” — and keep walking</p>
+                    <span class="sable-pill">Voice-only PIN</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -2.8s">
+                  <i class="sable-face f-maya"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.2s</span>
+                    <span class="sable-tlh">Voice matched</span>
+                    <p>Voiceprint verified with a fresh live challenge</p>
+                    <span class="sable-pill">Live challenge</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -5.6s">
+                  <i class="sable-face f-priya"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.4s</span>
+                    <span class="sable-tlh">Amount read</span>
+                    <p>₹240 → Swiggy, parsed straight from the words</p>
+                    <span class="sable-pill">NLP parsed</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -8.4s">
+                  <i class="sable-face f-ravi"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.6s</span>
+                    <span class="sable-tlh">Bank approves</span>
+                    <p>Payer bank checks the rails — no PIN typed</p>
+                    <span class="sable-pill">Limits safe</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -11.2s">
+                  <i class="sable-face f-sneha"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.8s</span>
+                    <span class="sable-tlh">Switch routed</span>
+                    <p>NPCI switch forwards to the payee bank</p>
+                    <span class="sable-pill">Live switch</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -14s">
+                  <i class="sable-face f-dev"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.9s</span>
+                    <span class="sable-tlh">Money lands</span>
+                    <p>Swiggy’s bank credits the account</p>
+                    <span class="sable-pill">Real-time credit</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -16.8s">
+                  <i class="sable-face f-you"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">1.0s</span>
+                    <span class="sable-tlh">Receipt, done</span>
+                    <p>Balance refreshes — you never looked down</p>
+                    <span class="sable-pill">Receipt stored</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -19.6s">
+                  <i class="sable-face f-you"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.0s</span>
+                    <span class="sable-tlh">You speak</span>
+                    <p>Say “Pay ₹240 to Swiggy” — and keep walking</p>
+                    <span class="sable-pill">Voice-only PIN</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -22.4s">
+                  <i class="sable-face f-maya"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.2s</span>
+                    <span class="sable-tlh">Voice matched</span>
+                    <p>Voiceprint verified with a fresh live challenge</p>
+                    <span class="sable-pill">Live challenge</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -25.2s">
+                  <i class="sable-face f-priya"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.4s</span>
+                    <span class="sable-tlh">Amount read</span>
+                    <p>₹240 → Swiggy, parsed straight from the words</p>
+                    <span class="sable-pill">NLP parsed</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -28s">
+                  <i class="sable-face f-ravi"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.6s</span>
+                    <span class="sable-tlh">Bank approves</span>
+                    <p>Payer bank checks the rails — no PIN typed</p>
+                    <span class="sable-pill">Limits safe</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -30.8s">
+                  <i class="sable-face f-sneha"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.8s</span>
+                    <span class="sable-tlh">Switch routed</span>
+                    <p>NPCI switch forwards to the payee bank</p>
+                    <span class="sable-pill">Live switch</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -33.6s">
+                  <i class="sable-face f-dev"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">0.9s</span>
+                    <span class="sable-tlh">Money lands</span>
+                    <p>Swiggy’s bank credits the account</p>
+                    <span class="sable-pill">Real-time credit</span>
+                  </div>
+                </div>
+                <div class="sable-tmi" style="--ph: -36.4s">
+                  <i class="sable-face f-you"></i><i class="sable-ms"></i>
+                  <div class="sable-tlc">
+                    <span class="sable-tlt">1.0s</span>
+                    <span class="sable-tlh">Receipt, done</span>
+                    <p>Balance refreshes — you never looked down</p>
+                    <span class="sable-pill">Receipt stored</span>
+                  </div>
+                </div>
+                </div>
+              </div>
+            </div>
 
             <div class="sable-foot">
               <span class="sable-live"><i></i>Live</span>
@@ -87,26 +220,6 @@
               <span>Voice ID</span><span>·</span>
               <span>Face ID</span>
             </div>
-          </div>
-
-          <!-- Drifting product glyphs. Twelve, hand-placed in the two outer bands
-               so they never sit behind the copy. Each carries its own --d (period),
-               --delay (negative, so the composition is already awake at load) and
-               --o (opacity) inline, because this is art direction, not layout. -->
-          <div class="sable-drift" aria-hidden="true">
-            <span class="drift-item" style="left:0px;  top:3%;  --d:26s; --delay:-4s;  --o:.12; width:24px"><svg class="icon"><use href="#ic-mic"/></svg></span>
-            <span class="drift-item" style="left:64px; top:26%; --d:34s; --delay:-14s; --o:.10; width:24px"><svg class="icon"><use href="#ic-card"/></svg></span>
-            <span class="drift-item" style="left:0px;  top:76%; --d:30s; --delay:-22s; --o:.09; width:26px"><svg class="icon"><use href="#ic-sendMoney"/></svg></span>
-            <span class="drift-item" style="left:78px; top:63%; --d:40s; --delay:-9s;  --o:.09; width:22px"><svg class="icon"><use href="#ic-store"/></svg></span>
-            <span class="drift-item" style="left:12px; top:81%; --d:28s; --delay:-18s; --o:.15; width:32px"><svg class="icon"><use href="#ic-checkCircle"/></svg></span>
-            <span class="drift-item" style="left:96px; top:94%; --d:44s; --delay:-30s; --o:.08; width:20px"><svg class="icon"><use href="#ic-waveform"/></svg></span>
-
-            <span class="drift-item drift-accent" style="right:66px; top:14%; --d:32s; --delay:-6s;  --o:.20; width:28px"><svg class="icon"><use href="#ic-bolt"/></svg></span>
-            <span class="drift-item" style="right:20px; top:30%; --d:38s; --delay:-25s; --o:.09; width:22px"><svg class="icon"><use href="#ic-package"/></svg></span>
-            <span class="drift-item" style="right:92px; top:50%; --d:27s; --delay:-13s; --o:.17; width:36px"><svg class="icon"><use href="#ic-smartphone"/></svg></span>
-            <span class="drift-item drift-gold" style="right:36px; top:70%; --d:36s; --delay:-20s; --o:.18; width:26px"><svg class="icon"><use href="#ic-shield"/></svg></span>
-            <span class="drift-item" style="right:78px; top:88%; --d:42s; --delay:-33s; --o:.08; width:20px"><svg class="icon"><use href="#ic-cart"/></svg></span>
-            <span class="drift-item" style="right:12px; top:63%; --d:24s; --delay:-2s;  --o:.12; width:30px"><svg class="icon"><use href="#ic-lock"/></svg></span>
           </div>
 
           <!-- Soft light that follows the pointer through the panel. animations.js
@@ -953,8 +1066,8 @@
 <script src="config.js"></script>
 <script src="webauthn.js?v=3"></script>
 <script src="voicebio.js?v=voice-4"></script>
-<script src="icons.js?v=ux-12"></script>
-<script src="animations.js?v=ux-12"></script>
-<script src="app.js?v=ux-12"></script>
+<script src="icons.js?v=ux-21"></script>
+<script src="animations.js?v=ux-22"></script>
+<script src="app.js?v=ux-21"></script>
 </body>
 </html>

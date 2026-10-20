@@ -15,6 +15,7 @@ USER root
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --chown=101:101 index.html app.js animations.js styles.css voicebio.js webauthn.js config.js icons.js \
      /usr/share/nginx/html/
+COPY --chown=101:101 assets/ /usr/share/nginx/html/assets/
 USER 101
 
 EXPOSE 8080
