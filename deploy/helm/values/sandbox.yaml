@@ -1,0 +1,66 @@
+# Code-sandbox — the locked runner pod for Ops MCP (Code Mode). Lives in its
+# OWN namespace (ai-sandbox) on purpose: blast-radius isolation. Install with
+#   helm upgrade --install upi-code-sandbox deploy/helm/upi-service \
+#     -f deploy/helm/values/sandbox.yaml -n ai-sandbox
+#
+# The in-cluster name resolves as code-sandbox.ai-sandbox.svc:8080 from the
+# agent (the only caller), and the NetworkPolicy shuts the pod off from
+# everything except Loki + DNS. Ing calls the single tool run_analysis.
+
+image:
+  repository: upi-code-sandbox
+  tag: "1.0.1"   # kind-local tag; bump per iteration (see agent.yaml)
+
+service:
+  name: code-sandbox
+  module: sandbox_service:app
+  port: 8080
+
+replicaCount: 1
+
+env:
+  LOKI_URL: http://loki.observability.svc:3100
+
+app:
+  config:
+    service: code-sandbox
+
+probes:
+  path: /health
+  startup:
+    enabled: true
+    periodSeconds: 3
+    failureThreshold: 20
+
+# 500m / 512Mi per the architecture doc: an infinite loop in generated code
+# gets the kill-9 from the 5s worker timeout, and even if it escaped, cgroup
+# pressure lands on this pod alone.
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { cpu: 500m, memory: 512Mi }
+
+# Layered hardening:
+#   • non-root (uid 10001), no privilege escalation, all caps dropped
+#   • root filesystem read-only: analysis code CANNOT touch /etc, site-packages
+#     or its own binaries. /tmp + /dev/shm get tmpfs so orchestrators still run.
+#   • no service account token (automountServiceAccountToken false) — the pod
+#     cannot talk to the Kubernetes API.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+automountServiceAccountToken: false
+
+extraVolumes:
+  - name: tmp
+    emptyDir: { medium: Memory, sizeLimit: 64Mi }
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp
+
+ingress:
+  enabled: false

@@ -138,6 +138,26 @@
 <div id="hero"></div>
 <div class="stats" id="stats"></div>
 
+<!-- On-call agent (Code Mode): asks the Unified Agent + ai-sandbox to mine
+     Loki and diagnose incidents. Token-gated by X-Admin-Token. -->
+<section id="agent-box" style="margin:18px 0;">
+  <h2 style="font-size:15px;margin:0 0 6px;">Ask the on-call agent</h2>
+  <p class="sub" style="margin:0 0 8px;">
+    Natural-language incident triage. The agent writes Python and runs it in an isolated sandbox pod
+    that can read Loki logs — nothing else.
+  </p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+    <input id="ops-token" type="password" value="sable-ops-admin" placeholder="X-Admin-Token"
+           style="flex:0 0 220px;padding:8px 10px;border-radius:8px;border:1px solid #2a2f42;background:#12141d;color:#e8eaf2;font:inherit;">
+    <button id="ops-ask-btn" style="padding:8px 14px;border-radius:8px;border:0;background:#6D5BF5;color:#fff;font:inherit;cursor:pointer;">
+      Diagnose
+    </button>
+  </div>
+  <textarea id="ops-prompt" rows="2" placeholder="e.g. Why did payments fail between 2 and 3 PM?"
+            style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid #2a2f42;background:#12141d;color:#e8eaf2;font:inherit;"></textarea>
+  <pre id="ops-answer" style="display:none;margin:10px 0 0;padding:12px;border-radius:10px;background:#0c0e16;border:1px solid #23273a;color:#cfd4e4;white-space:pre-wrap;font-size:13px;line-height:1.5;"></pre>
+</section>
+
 <div class="grid cols-2" style="margin-bottom:14px">
   <div class="panel">
     <div class="panel-head">
@@ -338,6 +358,37 @@ document.getElementById('trace-latest').onclick = () => {
 
 refresh();
 setInterval(refresh, 2500);
+
+// ── On-call agent (Code Mode) ────────────────────────────────────────────────
+// Talks to the Unified Agent Service /agent/ops. The agent plans with the LLM
+// and executes generated Python inside the locked ai-sandbox pod (Loki-only
+// egress). May take 15-60s: it is a full reasoning loop, hence the progress
+// indication and the button disable.
+document.getElementById('ops-ask-btn').onclick = async () => {
+  const btn    = document.getElementById('ops-ask-btn');
+  const out    = document.getElementById('ops-answer');
+  const prompt = document.getElementById('ops-prompt').value.trim();
+  const token  = document.getElementById('ops-token').value.trim();
+  if (!prompt) return;
+  out.style.display = 'block';
+  out.textContent = 'Agent is reasoning (writes code, runs it in the sandbox, reads Loki)…';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/agent/ops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+      body: JSON.stringify({ text: prompt }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 160));
+    const d = await r.json();
+    const tools = (d.tool_trail || []).map(s => s.tool).join(', ');
+    out.textContent = (d.reply || '(no answer)') + (tools ? `\n\n[tools used: ${tools}]` : '');
+  } catch (err) {
+    out.textContent = 'Agent call failed: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
 </script>
 </body>
 </html>

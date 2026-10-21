@@ -2,7 +2,7 @@
 # per-bank trial balances and the cross-bank conservation check.
 image:
   repository: upi-ops-console
-  tag: ""        # defaults to Chart.appVersion
+  tag: "1.0.2"   # agent-edition build (config + agent panel)
 
 service:
   name: ops-console

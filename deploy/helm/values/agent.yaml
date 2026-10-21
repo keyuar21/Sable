@@ -1,0 +1,77 @@
+# Unified Agent Service — ONE engine, TWO entrypoints:
+#   POST /agent/voice → Customer MCP (in-process, session-locked to X-VPA)
+#   POST /agent/ops   → Ops MCP (Code Mode → ai-sandbox pod)
+# The LLM is NVIDIA NIM (nvidia/nemotron-3.5-lightning-30b-a3b) standing in for
+# the self-hosted vLLM from the architecture doc; the key comes from the
+# `nim-api` secret (kubectl create secret generic nim-api --from-literal=api_key=...)
+# so it never lands in source or in a values file.
+
+image:
+  repository: upi-agent
+  #kind note: kind loads images under this tag locally; IfNotPresent then finds
+  # the fresh bytes. Bump the tag (not ?pullPolicy) on every code iteration —
+  # `Always` makes the kubelet ask docker.io for the image, which does not exist.
+  tag: "1.0.6"
+
+service:
+  name: agent
+  module: agent.agent_service:app
+  port: 5008
+
+replicaCount: 1
+
+env:
+  # Banking microservices for the customer plane. Namespaced FQDNs: the agent
+  # pod can reach the bank services but nothing in the customer plane knows
+  # the sandbox URL exists, and nothing customer-facing reaches the sandbox
+  # (see the ingress rules — /agent only).
+  AGENT_PAYER_URL: http://upi-payer-bank:5003
+  AGENT_RECHARGE_URL: http://upi-recharge:5007
+  AGENT_AUTH_URL: http://upi-auth:5005
+  # Ops plane → the locked runner pod. Fail-closed: if the pod is down the
+  # ops tool reports the error, no code executes elsewhere.
+  AGENT_SANDBOX_URL: http://upi-code-sandbox.ai-sandbox.svc:8080
+  # Dev default for the ops console; override with a strong token for
+  # anything remote (set AGENT_OPS_TOKEN again through a secret injection).
+  AGENT_OPS_TOKEN: sable-ops-admin
+
+# NIM credentials via envFrom — the secret only carries llm-api-key.
+envFrom:
+  - secretRef:
+      name: nim-api
+
+app:
+  config:
+    service: agent
+
+probes:
+  path: /health
+  startup:
+    enabled: true
+    periodSeconds: 3
+    failureThreshold: 20
+
+resources:
+  requests: { cpu: 200m, memory: 256Mi }
+  limits:   { memory: 1Gi }
+
+ingress:
+  enabled: true
+  className: nginx
+  # NO rewrite: the app serves the doc-faithful routes /agent/voice and
+  # /agent/ops literally, so the original path passes through untouched.
+  # Both the trusted host (upi-sim.local) and the wildcard localhost rule are
+  # listed so the customer voice app works from either origin.
+  hosts:
+    - host: upi-sim.local
+      paths:
+        - path: /agent
+          pathType: Prefix
+    - host: localhost
+      paths:
+        - path: /agent
+          pathType: Prefix
+  tls:
+    - hosts:
+        - upi-sim.local
+      secretName: upi-sim-tls

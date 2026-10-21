@@ -1,12 +1,15 @@
 import asyncio
 import uuid
+import hashlib
 import httpx
+import threading
 import time
 import os
 import sys
 import tempfile
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -118,6 +121,76 @@ def _render_assistant_voice(text: str, output_path: str):
     )
 
 
+# ── Persistent Piper worker + phrase cache ───────────────────────────────────
+# The one-shot render above pays Piper's full model load on EVERY phrase —
+# that multi-second gap the app answered every prompt with. A long-lived
+# worker process amortises the load across utterances, and identical phrasings
+# (screen-reader chips, repeated confirm screens) replay straight from disk.
+# Both paths fail safe: any worker hiccup falls back to the original render.
+_PIPER_WORKER = None
+_PIPER_TURN = 0
+_PIPER_LOCK = threading.Lock()
+_PIPER_OUT_DIR = Path(tempfile.gettempdir()) / "piper-assistant"
+_PIPER_OUT_DIR.mkdir(exist_ok=True)
+_TTS_CACHE_DIR = Path(tempfile.gettempdir()) / "piper-tts-cache"
+_TTS_CACHE_DIR.mkdir(exist_ok=True)
+_TTS_CACHE: dict = {}
+
+
+@app.on_event("startup")
+async def _warm_piper_worker():
+    """Load Piper's model once at boot, off the user's first request. The
+    first utterance previously paid several seconds of model load."""
+    async def _warm():
+        try:
+            await asyncio.to_thread(_render_with_worker, "Sable voice ready.")
+        except Exception:                     # noqa: BLE001 — warm-up is opportunistic
+            pass
+    asyncio.create_task(_warm())
+
+
+def _ensure_piper_worker():
+    global _PIPER_WORKER
+    if _PIPER_WORKER is not None and _PIPER_WORKER.poll() is None:
+        return _PIPER_WORKER
+    _PIPER_WORKER = subprocess.Popen(
+        ["piper", "--model", PIPER_VOICE, "--data-dir", PIPER_DATA_DIR,
+         "--output-dir", str(_PIPER_OUT_DIR)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    return _PIPER_WORKER
+
+
+def _render_with_worker(text: str) -> str | None:
+    """One utterance through the persistent worker; returns the rendered file
+    path or None (caller falls back to the one-shot render)."""
+    global _PIPER_TURN
+    with _PIPER_LOCK:
+        proc = _ensure_piper_worker()
+        assert proc.stdin is not None
+        known = set(_PIPER_OUT_DIR.glob("*.wav"))
+        _PIPER_TURN += 1
+        proc.stdin.write(text.strip() + "\n")
+        proc.stdin.flush()
+        deadline = time.time() + 25.0
+        while time.time() < deadline:
+            fresh = set(_PIPER_OUT_DIR.glob("*.wav")) - known
+            ready = [p for p in fresh
+                     if p.stat().st_size > 1000 and time.time() - p.stat().st_mtime > 0.25]
+            if ready:
+                newest = max(ready, key=lambda p: p.stat().st_mtime)
+                key = hashlib.sha256(text.encode()).hexdigest()[:24]
+                cached = _TTS_CACHE_DIR / f"{key}.wav"
+                if not cached.exists():
+                    newest.replace(cached)
+                return str(cached if cached.exists() else newest)
+            time.sleep(0.05)
+        return None
+
+
 @app.post("/assistant/voice")
 async def assistant_voice(req: TTSRequest):
     """Generate a WAV using the app's default feminine Piper voice."""
@@ -127,6 +200,22 @@ async def assistant_voice(req: TTSRequest):
     if len(text) > 500:
         raise HTTPException(status_code=400, detail="Prompt is too long")
 
+    # 1) phrase cache (fast path — no model load at all)
+    cache_key = hashlib.sha256(text.encode()).hexdigest()[:24]
+    cached = _TTS_CACHE.get(cache_key)
+    if cached and Path(cached).exists():
+        return FileResponse(cached, media_type="audio/wav", filename="assistant.wav")
+
+    # 2) persistent worker (one shared model in memory)
+    try:
+        rendered = await asyncio.to_thread(_render_with_worker, text)
+        if rendered:
+            _TTS_CACHE[cache_key] = rendered
+            return FileResponse(rendered, media_type="audio/wav", filename="assistant.wav")
+    except Exception:                     # noqa: BLE001 — worker failure must never fail the endpoint
+        pass
+
+    # 3) legacy one-shot render (original path, byte-for-byte behaviour)
     output = tempfile.NamedTemporaryFile(prefix="upi-assistant-", suffix=".wav", delete=False)
     output.close()
     try:

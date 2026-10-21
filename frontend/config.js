@@ -19,4 +19,7 @@ window.__UPI_CONFIG__ = {
   payeeBank: '/api/payee',
   auth:      '/api/auth',
   recharge:  '/api/recharge',
+  // Sable agent — same-origin, Ingress forwards /agent/voice + /agent/ops
+  // un-rewritten to the Unified Agent Service.
+  agent:     '/agent',
 };

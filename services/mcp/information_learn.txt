@@ -1,0 +1,63 @@
+You have hit on a brilliant insight!
+
+Normally, you know the **two traditional ways** to run code in Kubernetes:
+
+1. **Method 1: `kubectl exec`**  
+   You open a terminal and run `kubectl exec -it pod -- python script.py`.
+2. **Method 2: Bake it into an Image**  
+   You write your code on your laptop, build a Docker image (`docker build`), and deploy the Pod.
+
+---
+
+### What is this 3rd Method? (The "LeetCode / Jupyter" Pattern)
+
+This 3rd method is called **"Code as an HTTP Service"** (or **Remote Code Execution Engine**). 
+
+Think of it like **LeetCode** or **Google Colab**:
+* When you type Python code on LeetCode and click "Run", LeetCode does **NOT** build a new Docker image for you, and it does **NOT** give you SSH/kubectl access.
+* Instead, LeetCode has a running Pod waiting. Your browser sends your Python code as a **plain text string inside a web request (JSON)**:
+  ```json
+  POST /execute
+  {
+    "code": "print(2 + 2)"
+  }
+  ```
+* The Pod takes that text, feeds it into Python's built-in `exec()` engine in memory, and replies back with:
+  ```json
+  {
+    "result": "4"
+  }
+  ```
+
+That is **exactly** what your `ai-sandbox` pod is doing!
+
+---
+
+### Why not use `kubectl exec`? Why is this HTTP method better?
+
+You might wonder: *"Why didn't we just make the Agent run `kubectl exec` inside the sandbox pod?"*
+
+There are **3 huge reasons** why the HTTP service is 100x better:
+
+#### 1. Security (No Cluster-Admin Permissions Needed)
+* To run `kubectl exec`, your Agent pod would need a **Kubernetes ServiceAccount with cluster permissions**. If a hacker tricked the agent, they could control your entire Kubernetes cluster!
+* With the HTTP method, the Agent has **zero Kubernetes permissions**. It is just making a regular HTTP call to `http://upi-code-sandbox:8080/execute`.
+
+#### 2. Speed (Milliseconds vs Seconds)
+* `kubectl exec` has to authenticate with the Kubernetes API server, open a WebSocket tunnel, spawn a shell, and tear it down. It takes 1 to 2 seconds.
+* The HTTP service is already running live in memory. It receives the code and runs it in **15 milliseconds**.
+
+#### 3. Strict Timeout & Output Control
+* Inside the pod, Python wraps the code with:
+  ```python
+  p = ctx.Process(target=run, args=(code,))
+  out = q.get(timeout=5.0)  # Kill after 5 seconds!
+  ```
+  If the AI wrote an infinite loop (`while True:`), the pod's timer kills it immediately and returns `"Error: timed out"`.
+
+---
+
+### In Simple Words:
+You **did** deploy a Docker container (Method 2). But instead of baking the AI's script into the container, you baked in a **Python Interpreter that listens on a web API**.
+
+The LLM writes Python as text $\rightarrow$ sends it over HTTP $\rightarrow$ the pod runs it in memory $\rightarrow$ returns the answer. That is how LeetCode, ChatGPT Code Interpreter, and your `ops_mcp` work!

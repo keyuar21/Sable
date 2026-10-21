@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Sandbox lockdown — the NetworkPolicy that makes Code Mode survivable.
+#
+# Default-deny BOTH directions for the code-sandbox pod, then open exactly:
+#   ingress :8080  from namespace upi            (the agent calls run_analysis)
+#   egress  :3100  to namespace observability    (Loki log queries)
+#   egress  :53    to kube-system (UDP+TCP)      (DNS to resolve loki FQDN)
+#
+# Everything else — the banking pods, Supabase, the internet, even Grafana —
+# is unreachable. A prompt-injected script in the sandbox cannot exfiltrate
+# ledger data or hammer the payment core; the worst it can produce is a
+# timeout and an error string.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-lockdown
+  namespace: ai-sandbox
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: upi-service
+      app.kubernetes.io/instance: upi-code-sandbox
+  policyTypes: ["Ingress", "Egress"]
+---
+# gateway allowlist (apply as separate policy so edits stay reviewable)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-allow
+  namespace: ai-sandbox
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: upi-service
+      app.kubernetes.io/instance: upi-code-sandbox
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: upi
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 3100
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

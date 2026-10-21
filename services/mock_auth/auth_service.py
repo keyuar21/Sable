@@ -565,6 +565,14 @@ async def voice_verify(
         raise HTTPException(400, str(e)) from e
 
     if not result["matched"]:
+        # The 401 is only a response code in the access log — surface the WHY
+        # here so a failed payment can actually be diagnosed.
+        print(
+            f"[voice-verify REJECT] vpa={vpa} fail_reason={result.get('fail_reason')} "
+            f"score={result.get('score')} threshold={result.get('threshold')} "
+            f"liveness={result.get('liveness', {}).get('message', result.get('liveness'))}",
+            flush=True,
+        )
         raise HTTPException(
             401,
             {

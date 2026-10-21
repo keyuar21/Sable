@@ -496,9 +496,9 @@
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-          <button class="action-btn voice-main" id="btn-voice-pay">
+          <button class="action-btn voice-main sable-talk" id="btn-voice-pay">
             <div class="action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-mic"></use></svg></div>
-            <span class="action-label">Voice Pay</span>
+            <span class="action-label">Talk to Sable</span>
           </button>
           <button class="action-btn" id="btn-qr-demo">
             <div class="action-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#ic-camera"></use></svg></div>
@@ -521,7 +521,7 @@
         <!-- Merchant Quick Pay -->
         <div class="section-header">
           <span class="section-title">Pay to</span>
-          <span class="section-link" id="btn-voice-pay-link">+ Voice Pay</span>
+          <span class="section-link" id="btn-voice-pay-link">+ Ask Sable</span>
         </div>
         <div class="merchant-chips">
           <div class="merchant-chip" data-vpa="swiggy@mockbank2" data-name="Swiggy" data-icon="🍔">
@@ -1068,6 +1068,34 @@
 <script src="voicebio.js?v=voice-4"></script>
 <script src="icons.js?v=ux-21"></script>
 <script src="animations.js?v=ux-22"></script>
-<script src="app.js?v=ux-21"></script>
+<script src="app.js?v=ux-24"></script>
+
+<!-- Sable agent panel — pops over any post-login screen when the agent
+     answers (spending breakdowns, plain narration). Owned by app.js. -->
+<div id="agent-panel" class="sable-agent-panel" hidden>
+  <div class="sable-agent-card">
+    <div class="sable-agent-head">
+      <span class="sable-agent-spark" aria-hidden="true"></span>
+      <span class="sable-agent-title">Sable</span>
+      <button id="agent-close" class="sable-agent-close" type="button" aria-label="Dismiss">&times;</button>
+    </div>
+    <p id="agent-reply" class="sable-agent-reply"></p>
+    <div id="agent-chart" class="sable-agent-chart" hidden>
+      <div class="sable-agent-chart-wrap">
+        <canvas id="agent-donut" width="220" height="220"></canvas>
+      </div>
+      <div class="sable-agent-legend">
+        <div id="agent-chart-total" class="sable-agent-total"></div>
+        <div id="agent-legend"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const c = document.getElementById('agent-close');
+    if (c) c.addEventListener('click', closeAgentPanel);
+  });
+</script>
 </body>
 </html>

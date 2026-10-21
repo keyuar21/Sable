@@ -2,7 +2,7 @@
 # source of truth for every payer balance.
 image:
   repository: upi-payer-bank
-  tag: ""        # defaults to Chart.appVersion
+  tag: "1.0.2"   # + spending-summary endpoint (agent get_my_spending_breakdown)
 
 service:
   name: payer-bank

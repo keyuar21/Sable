@@ -550,6 +550,28 @@ def all_transactions():
     conn.close()
     return [dict(r) for r in rows]
 
+
+@app.get("/spending-summary/{vpa}")
+def spending_summary(vpa: str, days: int = 30):
+    """Read-only aggregation for the Customer MCP tool (the agent never
+    touches this DB directly). Deterministic SQL: category maths happen HERE,
+    not in the LLM."""
+    vpa = norm_vpa(vpa)
+    days = max(1, min(int(days), 365))
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT payee_vpa, COUNT(*) AS n, SUM(amount) AS total"
+        "  FROM transactions"
+        " WHERE payer_vpa = ? AND status NOT IN ('failed','failure','reversed','pending')"
+        "   AND timestamp >= datetime('now', ?)"
+        " GROUP BY payee_vpa ORDER BY total DESC",
+        (vpa, f"-{days} days"),
+    ).fetchall()
+    conn.close()
+    return {"vpa": vpa, "days": days,
+            "rows": [{"payee_vpa": r["payee_vpa"], "n": r["n"],
+                      "total": round(r["total"] or 0.0, 2)} for r in rows]}
+
 @app.post("/debit")
 def debit(req: DebitRequest):
     req.vpa = norm_vpa(req.vpa)

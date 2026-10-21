@@ -314,7 +314,7 @@ function startVoiceInput() {
   micBtn.classList.remove('idle');
   micBtn.classList.add('listening');
   statusText.textContent = 'Listening…';
-  hint.textContent = 'Try: "Pay 500 to Swiggy" or "Send 250 to Zomato"';
+  hint.textContent = 'Ask Sable: "Where did my money go this month" · "Pay my Jio bill if it is expiring" · "Pay 500 to Swiggy"';
   transcript.textContent = '…';
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -335,13 +335,27 @@ function startVoiceInput() {
   rec.lang = 'en-IN';
   rec.continuous = false;
   rec.interimResults = true;
+  rec.lang = 'en-US';          // don't leave the language to device defaults
+  rec.maxAlternatives = 1;
   state.recognition = rec;
 
-  rec.onresult = (event) => {
-    const text = Array.from(event.results).map(r => r[0].transcript).join('');
-    transcript.textContent = `"${text}"`;
+  let latest    = '';    // best transcript so far (final or interim)
+  let processed = false; // has a final already been handed off?
 
-    if (event.results[event.results.length - 1].isFinal) {
+  const handleUtterance = (text) => {
+    if (processed || !text.trim()) return;
+    processed = true;
+    (async () => {
+      // Sable agent first — full understanding instead of rigid regex.
+      if (AGENT_ENABLED && !state.agentBusy) {
+        state.agentBusy = true;
+        statusText.textContent = 'Sable is thinking…';
+        transcript.textContent = `"${text}"`;
+        const handled = await tryAgent(text, 'voice');
+        state.agentBusy = false;
+        if (handled) return;
+        statusText.textContent = 'Listening…';
+      }
       const intent = parseIntent(text);
       if (intent && !intent.error) {
         stopVoiceInput();
@@ -352,7 +366,23 @@ function startVoiceInput() {
         waveform.classList.add('idle');
         micBtn.classList.remove('listening');
         micBtn.classList.add('idle');
+      } else {
+        statusText.textContent = 'Could not understand';
+        hint.textContent = 'Tap the mic and ask again — say a bit slower';
+        waveform.classList.add('idle');
+        micBtn.classList.remove('listening');
+        micBtn.classList.add('idle');
       }
+    })();
+  };
+
+  rec.onresult = (event) => {
+    const text = Array.from(event.results).map(r => r[0].transcript).join('');
+    latest = text;
+    transcript.textContent = `"${text}"`;
+
+    if (event.results[event.results.length - 1].isFinal) {
+      handleUtterance(text);
     }
   };
 
@@ -367,6 +397,13 @@ function startVoiceInput() {
   rec.onend = () => {
     waveform.classList.add('idle');
     micBtn.classList.remove('listening');
+    // Chrome often ends a session without ever setting isFinal (quiet or
+    // long pauses). Hand off whatever we heard instead of sitting here.
+    if (!processed && latest.trim()) handleUtterance(latest);
+    if (!processed) {
+      statusText.textContent = 'Could not hear you';
+      transcript.textContent = '…';
+    }
   };
 
   rec.start();
@@ -385,24 +422,35 @@ function handleTextInput() {
   if (!text) return;
 
   document.getElementById('voice-transcript').textContent = `"${text}"`;
-  const intent = parseIntent(text);
 
-  if (intent && !intent.error) {
-    input.value = '';
-    stopVoiceInput();
-    showConfirm(intent.merchant, intent.amount);
-  } else if (intent && intent.error === 'limit') {
-    document.getElementById('voice-status-text').textContent = 'Amount too high';
-    document.getElementById('voice-hint').textContent =
-      `₹${formatAmount(intent.amount)} is over the ₹${formatAmount(MAX_TXN_AMOUNT)} per-payment limit.`;
-    input.style.borderColor = 'var(--red)';
-    setTimeout(() => { input.style.borderColor = ''; }, 1500);
-  } else {
-    document.getElementById('voice-status-text').textContent = 'Could not understand';
-    document.getElementById('voice-hint').textContent = 'Try: "Pay 500 to Swiggy"';
-    input.style.borderColor = 'var(--red)';
-    setTimeout(() => { input.style.borderColor = ''; }, 1500);
-  }
+  (async () => {
+    if (AGENT_ENABLED && !state.agentBusy) {
+      state.agentBusy = true;
+      document.getElementById('voice-status-text').textContent = 'Sable is thinking…';
+      const handled = await tryAgent(text, 'text');
+      state.agentBusy = false;
+      if (handled) return;
+      document.getElementById('voice-status-text').textContent = 'Listening…';
+    }
+    const intent = parseIntent(text);
+
+    if (intent && !intent.error) {
+      input.value = '';
+      stopVoiceInput();
+      showConfirm(intent.merchant, intent.amount);
+    } else if (intent && intent.error === 'limit') {
+      document.getElementById('voice-status-text').textContent = 'Amount too high';
+      document.getElementById('voice-hint').textContent =
+        `₹${formatAmount(intent.amount)} is over the ₹${formatAmount(MAX_TXN_AMOUNT)} per-payment limit.`;
+      input.style.borderColor = 'var(--red)';
+      setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    } else {
+      document.getElementById('voice-status-text').textContent = 'Could not understand';
+      document.getElementById('voice-hint').textContent = 'Try: "Pay 500 to Swiggy" or ask anything else';
+      input.style.borderColor = 'var(--red)';
+      setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    }
+  })();
 }
 
 // ── Confirm screen + AI spoken prompt ─────────────────────────────────────────
@@ -482,6 +530,11 @@ async function authorizePaymentWithVoice() {
       `Payment of ${formatAmount(state.payment.amount)} rupees to ${state.payment.payeeName}. ` +
       `Say yes make payment, then code ${codeSpoken}`
     );
+
+    // Leave a beat of silence after the assistant stops talking. The speaker
+    // tail used to bleed into the recording and the anti-spoof model read the
+    // synthetic echo as a replay — a sure rejection on every attempt.
+    await new Promise(r => setTimeout(r, 700));
 
     window.__onVoiceTranscript = (t) => { if (trEl) trEl.textContent = `"${t}"`; };
 
@@ -2418,3 +2471,148 @@ document.addEventListener('DOMContentLoaded', () => {
   syncAuthChrome();
   showScreen('login');
 });
+
+// ── Sable agent (Unified Agent Service) ──────────────────────────────────────
+// Voice and text input route through /agent/voice first: an LLM planner with
+// session-locked tools understands conditional, multi-step requests. If the
+// agent is unreachable the code falls through to the classic parseIntent()
+// path above, so nothing regresses when the agent pod is down.
+//
+// Money safety is unchanged: an agent "stage_payment" is an INTENT, not a
+// transaction — it lands in the same comfirm screen and can only become a
+// debit after the existing 4-digit live-voice challenge.
+const AGENT_ENABLED = !!(window.__UPI_CONFIG__ && window.__UPI_CONFIG__.agent);
+const AGENT_ROUTE   = AGENT_ENABLED ? window.__UPI_CONFIG__.agent : null;
+
+const AGENT_CATEGORY_COLOURS = ['#6D5BF5', '#F5B841', '#9B7BFF', '#2CB1A6', '#F2544B', '#8A8FA3'];
+
+async function tryAgent(text, source) {
+  if (!AGENT_ROUTE) return false;
+  const ctrl = new AbortController();
+  const kill = setTimeout(() => ctrl.abort(), 25000);   // fail over, never hang
+  try {
+    const res = await fetch(AGENT_ROUTE + '/voice', {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'X-VPA': state.user.vpa },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    // Hard infrastructure failure (bad key, NIM down): fall back to regex.
+    if (data.errored && !data.action && !data.chart &&
+        /LLM \d{3}|unreachable|not configured|kill/i.test(data.reply || '')) return false;
+
+    handleAgentResult(data, source);
+    return true;
+  } catch (err) {
+    console.info('Agent unavailable; using classic intent parser.', err);
+    return false;
+  } finally {
+    clearTimeout(kill);
+  }
+}
+
+function handleAgentResult(data, source) {
+  const reply = (data.reply || '').trim();
+
+  if (data.action && data.action.type === 'stage_payment') {
+    const a = data.action;
+    // Reuse the EXISTING confirm + voice-challenge flow, byte for byte.
+    const known = Object.values(MERCHANTS).find(m => m.vpa === a.payee_vpa);
+    const merchant = known || {
+      vpa:   a.payee_vpa,
+      name:  a.payee_name || a.payee_vpa.split('@')[0].replace(/^\w/, c => c.toUpperCase()),
+      icon:  '🛒',
+    };
+    if (source === 'voice') stopVoiceInput(); else {
+      const input = document.getElementById('voice-text-input');
+      if (input) input.value = '';
+    }
+    showConfirm(merchant, a.amount);
+    // The agent's narration explains routing decisions (e.g. "because your
+    // primary balance is low…"); show THAT instead of the generic line.
+    const aiEl = document.getElementById('voice-confirm-ai');
+    if (aiEl && reply) aiEl.textContent = `AI: “${reply}”`;
+    if (reply && typeof speakPrompt === 'function') { speakPrompt(reply); }
+    return;
+  }
+
+  stopVoiceInput();
+  openAgentPanel(reply, data.chart);
+  if (reply && typeof speakPrompt === 'function') { speakPrompt(reply); }
+}
+
+// The agent result card: narration + optional animated donut of spending.
+function openAgentPanel(reply, chart) {
+  const panel = document.getElementById('agent-panel');
+  if (!panel) return;
+  document.getElementById('agent-reply').textContent = reply || '(no answer)';
+  const chartBox = document.getElementById('agent-chart');
+  const canvas   = document.getElementById('agent-donut');
+  const legend   = document.getElementById('agent-legend');
+
+  if (chart && chart.data && Object.keys(chart.data).length) {
+    chartBox.hidden = false;
+    legend.innerHTML = '';
+    const entries = Object.entries(chart.data).sort((x, y) => y[1] - x[1]);
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    entries.forEach(([cat, val], i) => {
+      const row = document.createElement('div');
+      row.className = 'sable-agent-legend-row';
+      row.innerHTML =
+        `<span class="sable-agent-dot" style="background:${AGENT_CATEGORY_COLOURS[i % AGENT_CATEGORY_COLOURS.length]}"></span>` +
+        `<span class="sable-agent-legend-cat">${escapeHtml(cat)}</span>` +
+        `<span class="sable-agent-legend-val">₹${formatAmount(val)} · ${Math.round(val / total * 100)}%</span>`;
+      legend.appendChild(row);
+    });
+    drawAgentDonut(canvas, entries);
+    document.getElementById('agent-chart-total').textContent =
+      `₹${formatAmount(total)}${chart.title ? ' · ' + escapeHtml(chart.title) : ''}`;
+  } else {
+    chartBox.hidden = true;
+  }
+  panel.hidden = false;
+}
+
+function closeAgentPanel() {
+  const panel = document.getElementById('agent-panel');
+  if (panel) panel.hidden = true;
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function drawAgentDonut(canvas, entries) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(w, h) / 2 - 14;
+  const thick = 26;
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  const t0 = performance.now();
+  const DURATION = 900;
+
+  function frame(t) {
+    const p = Math.min(1, (t - t0) / DURATION);
+    const ease = 1 - Math.pow(1 - p, 3);
+    ctx.clearRect(0, 0, w, h);
+    let angle = -Math.PI / 2;
+    entries.forEach(([cat, val], i) => {
+      const sweep = (val / total) * Math.PI * 2 * ease;
+      if (sweep <= 0) return;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, angle, angle + sweep);
+      ctx.strokeStyle = AGENT_CATEGORY_COLOURS[i % AGENT_CATEGORY_COLOURS.length];
+      ctx.lineWidth = thick;
+      ctx.lineCap = 'butt';
+      ctx.stroke();
+      angle += sweep;
+    });
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text') || '#eaeaf2';
+    ctx.font = '600 20px ui-sans-serif, system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('₹' + formatAmount(total * ease), cx, cy);
+    if (p < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
