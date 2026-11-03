@@ -627,7 +627,7 @@ function updateEnrollUI() {
   const btn = document.getElementById('btn-voice-enroll-record');
   if (btn) {
     btn.disabled = state.voiceEnroll.recording || step >= ENROLL_SAMPLES || !state.voiceEnroll.challengeId;
-    btn.textContent = step >= ENROLL_SAMPLES ? 'Saving…' : `${iconFor('mic', 'icon-lead')} Record sample ${step + 1} of ${ENROLL_SAMPLES}`;
+    btn.innerHTML = step >= ENROLL_SAMPLES ? 'Saving…' : `${iconFor('mic', 'icon-lead')} Record sample ${step + 1} of ${ENROLL_SAMPLES}`;
   }
 }
 
@@ -2534,13 +2534,19 @@ function handleAgentResult(data, source) {
     // primary balance is low…"); show THAT instead of the generic line.
     const aiEl = document.getElementById('voice-confirm-ai');
     if (aiEl && reply) aiEl.textContent = `AI: “${reply}”`;
-    if (reply && typeof speakPrompt === 'function') { speakPrompt(reply); }
+    if (reply && typeof speakPrompt === 'function') {
+      // Streamed: first sentence starts speaking while the rest renders.
+      (typeof speakPromptStreamed === 'function' ? speakPromptStreamed : speakPrompt)(reply);
+    }
     return;
   }
 
   stopVoiceInput();
   openAgentPanel(reply, data.chart);
-  if (reply && typeof speakPrompt === 'function') { speakPrompt(reply); }
+  if (reply && typeof speakPrompt === 'function') {
+    // Streamed: first sentence starts speaking while the rest renders.
+    (typeof speakPromptStreamed === 'function' ? speakPromptStreamed : speakPrompt)(reply);
+  }
 }
 
 // The agent result card: narration + optional animated donut of spending.

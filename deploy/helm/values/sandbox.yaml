@@ -9,7 +9,7 @@
 
 image:
   repository: upi-code-sandbox
-  tag: "1.0.1"   # kind-local tag; bump per iteration (see agent.yaml)
+  tag: "1.0.3"   # kind-local tag; bump per iteration (see agent.yaml)
 
 service:
   name: code-sandbox

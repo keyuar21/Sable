@@ -14,9 +14,13 @@ Port 5010. (5006 is reserved for the payee PSP in the architecture spec.)
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,19 +34,29 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 
 # The banks this console can see. In the real world an ops console reads a
-# warehouse replica; here it reads each bank's own file, read-only.
+# warehouse replica; here it reads each bank's own file, read-only. When the
+# file is NOT beside us (in its own pod), the console falls back to each bank's
+# read-only /ledger/ops/* HTTP mirror over the cluster network instead — same
+# SQL results, different transport.
 BANKS = {
     "MOCKBANK": {
         "label": "Remitter Bank (payer side)",
         "path": os.path.join(HERE, "..", "mock_payer_bank", "payer_ledger.db"),
         "port": 5003,
+        "url": os.getenv("PAYER_BANK_URL", "http://upi-payer-bank.upi.svc:5003"),
     },
     "MOCKBANK2": {
         "label": "Beneficiary Bank (payee side)",
         "path": os.path.join(HERE, "..", "mock_payee_bank", "payee_ledger.db"),
         "port": 5004,
+        "url": os.getenv("PAYEE_BANK_URL", "http://upi-payee-bank.upi.svc:5004"),
     },
 }
+
+# The PSP owns the transaction store. The ledger only records payments that
+# completed at least one leg, so a failed attempt never appears in the journal
+# at all — the PSP is the only place to ask "did anything fail?".
+PSP_URL = os.getenv("PSP_URL", "http://upi-psp.upi.svc:5001")
 
 app = FastAPI(title="Bank Operations Console", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -61,6 +75,38 @@ def open_ro(bank_code: str) -> sqlite3.Connection:
     return conn
 
 
+def _bank_read(code: str, route: str, query: dict | None = None):
+    """One per-bank read, two transports.
+
+    • Repo checkout: the ledger SQLite file sits beside this module — open it
+      read-only (unchanged behaviour, the queries still run locally).
+    • In-cluster: the console is its own pod; the file is unreachable. Each
+      bank then serves the identical read-only SQL over /ledger/ops/* (see
+      the ops-console mirror section of the bank services) and this returns
+      ('http', that payload).
+
+    Caller pattern:
+        mode, data = _bank_read("MOCKBANK", "/ledger/ops/summary")
+    data is an open sqlite connection for 'conn', a parsed dict for 'http'.
+    """
+    cfg = BANKS.get(code)
+    if not cfg:
+        raise HTTPException(404, f"Unknown bank: {code}")
+    if os.path.exists(os.path.abspath(cfg["path"])):
+        return "conn", open_ro(code)
+    base = cfg["url"].rstrip("/")
+    qs = ""
+    if query:
+        clean = {k: v for k, v in query.items() if v is not None}
+        if clean:
+            qs = "?" + urllib.parse.urlencode(clean)
+    try:
+        with urllib.request.urlopen(base + route + qs, timeout=10) as resp:
+            return "http", json.loads(resp.read().decode())
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise HTTPException(503, f"{code} not reachable via {base}{route}: {exc}") from exc
+
+
 # ── API ──────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -77,12 +123,21 @@ def overview():
 
     for code, cfg in BANKS.items():
         try:
-            conn = open_ro(code)
-        except HTTPException:
+            mode, opened = _bank_read(code, "/ledger/ops/summary")
+        except (HTTPException, OSError):
             reachable = False
             out["banks"].append({"bank_code": code, "label": cfg["label"], "online": False})
             continue
         try:
+            if mode == "http":
+                # The bank's mirror already produced this exact shape — just
+                # attach the display label and it is the same row the local
+                # queries built.
+                opened |= {"label": cfg["label"]}
+                out["banks"].append(opened)
+                pool_total_paise += round(opened["pool_balance"] * 100)
+                continue
+            conn = opened
             accounts = L.trial_balance(conn)
             try:
                 integrity = L.assert_books_balance(conn)
@@ -114,8 +169,11 @@ def overview():
                 "entry_count": conn.execute("SELECT COUNT(*) c FROM journal_entries").fetchone()["c"],
                 "posting_count": conn.execute("SELECT COUNT(*) c FROM postings").fetchone()["c"],
             })
-        finally:
             conn.close()
+        except Exception:
+            if mode != "http":
+                conn.close()
+            raise
 
     # THE systemic invariant. Every rupee that left a payer sits either in the
     # remitter's pool (awaiting settlement) or has been drawn from the
@@ -143,9 +201,14 @@ def journal(limit: int = 40):
     entries = []
     for code in BANKS:
         try:
-            conn = open_ro(code)
+            mode, opened = _bank_read(code, "/ledger/ops/journal", {"limit": limit})
         except HTTPException:
             continue
+        if mode == "http":
+            # Mirror entries carry bank_code and all computed legs already.
+            entries.extend(opened.get("entries", []))
+            continue
+        conn = opened
         try:
             rows = conn.execute(
                 """SELECT entry_id, txn_ref, rrn, event_type, reverses, narration, posted_at
@@ -202,9 +265,18 @@ def trace(txn_ref: str):
     found = False
     for code in BANKS:
         try:
-            conn = open_ro(code)
+            mode, opened = _bank_read(code, f"/ledger/ops/trace/{urllib.parse.quote(txn_ref)}")
         except HTTPException:
             continue
+        if mode == "http":
+            legs_by_bank[code] = {
+                "label": BANKS[code]["label"],
+                "entries": opened.get("entries", []),
+                "transaction_row": opened.get("transaction_row"),
+            }
+            found = found or bool(opened.get("entries"))
+            continue
+        conn = opened
         try:
             rows = conn.execute(
                 """SELECT je.entry_id, je.event_type, je.reverses, je.narration, je.posted_at,
@@ -251,9 +323,14 @@ def trace(txn_ref: str):
 @app.get("/api/statement/{bank_code}/{vpa}")
 def statement(bank_code: str, vpa: str):
     """One account's full statement, straight from the postings table."""
-    conn = open_ro(bank_code)
+    account_id = f"{bank_code}:{vpa}"
+    mode, opened = _bank_read(
+        bank_code, f"/ledger/ops/statement/{urllib.parse.quote(account_id, safe='')}"
+    )
+    if mode == "http":
+        return opened
+    conn = opened
     try:
-        account_id = f"{bank_code}:{vpa}"
         rows = conn.execute(
             """SELECT je.entry_id, je.txn_ref, je.event_type, je.reverses,
                       je.narration, je.posted_at, p.direction, p.amount_paise
@@ -284,9 +361,13 @@ def holds():
     out = []
     for code in BANKS:
         try:
-            conn = open_ro(code)
+            mode, opened = _bank_read(code, "/ledger/ops/holds")
         except HTTPException:
             continue
+        if mode == "http":
+            out.extend(opened.get("holds", []))
+            continue
+        conn = opened
         try:
             for r in conn.execute(
                 """SELECT hold_id, account_id, txn_ref, amount_paise, status, created_at, expires_at
@@ -301,6 +382,28 @@ def holds():
         finally:
             conn.close()
     return {"holds": out}
+
+
+@app.get("/api/transactions")
+def transactions(limit: int = 25):
+    """Proxy PSP's transaction store (read-only).
+
+    This is the ground truth for transaction outcomes: status is one of
+    initiated/routing/debiting/crediting/success/failed/reversed/
+    partial_failure/settled. The Diagnose box forwards these facts to the
+    agent so it can answer "did any transaction fail?" without guessing from
+    logs."""
+    url = f"{PSP_URL.rstrip('/')}/transactions"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            txns = json.loads(resp.read().decode())
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        raise HTTPException(503, f"PSP not reachable via {url}: {exc}") from exc
+    if isinstance(txns, dict):
+        txns = txns.get("transactions", [])
+    # Newest first, always — the store's own order is not a contract.
+    txns = sorted(txns, key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return {"transactions": list(txns)[: max(1, min(limit, 100))]}
 
 
 # ── Static page ──────────────────────────────────────────────────────────────

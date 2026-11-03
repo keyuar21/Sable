@@ -1,7 +1,7 @@
 # Beneficiary bank — holds merchant accounts. Owns payee_ledger.db.
 image:
   repository: upi-payee-bank
-  tag: ""        # defaults to Chart.appVersion
+  tag: "1.0.1"   # + ledger/ops/* read-only mirrors for the in-cluster console
 
 service:
   name: payee-bank

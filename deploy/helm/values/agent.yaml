@@ -11,7 +11,7 @@ image:
   #kind note: kind loads images under this tag locally; IfNotPresent then finds
   # the fresh bytes. Bump the tag (not ?pullPolicy) on every code iteration —
   # `Always` makes the kubelet ask docker.io for the image, which does not exist.
-  tag: "1.0.6"
+  tag: "1.0.12"
 
 service:
   name: agent

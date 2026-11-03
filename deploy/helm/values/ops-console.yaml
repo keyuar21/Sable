@@ -2,7 +2,7 @@
 # per-bank trial balances and the cross-bank conservation check.
 image:
   repository: upi-ops-console
-  tag: "1.0.2"   # agent-edition build (config + agent panel)
+  tag: "1.0.6"   # ledger via bank HTTP mirrors + agent cross-origin call
 
 service:
   name: ops-console

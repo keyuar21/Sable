@@ -366,3 +366,67 @@ async function verifyVoiceBiometric(vpa, wavBlob, { challengeId, spokenText = ''
   }
   return body;
 }
+
+// ── Streaming agent reply (sentence pipelining) ──────────────────────────────
+// Piper renders a whole paragraph in ONE call, and speakPrompt() waits for
+// that full render before playing a single syllable — so the text appeared
+// seconds before the voice, and the longer Sable's answer, the later the
+// voice. This speaks sentence by sentence: render sentence 2 while sentence 1
+// is already on air, so the first audio lands ~1-2s after the text instead of
+// after the whole paragraph. Falls back to one-shot renders (and then to the
+// browser voice) per sentence, so audible output never degrades.
+let _speakSeq = 0;
+
+async function speakPromptStreamed(text) {
+  const parts = (String(text || '').match(/[^.!?]+[.!?]+|\S[^.!?]*$/g) || [])
+    .map(s => s.trim()).filter(Boolean);
+  if (parts.length < 2) return speakPrompt(text);
+
+  const gen = ++_speakSeq;
+  stopSpeaking();
+
+  const fetchTTS = (t) => fetch(LOCAL_TTS_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: t }),
+  }).then(r => {
+    if (!r.ok) throw new Error('TTS HTTP ' + r.status);
+    return r.blob();
+  });
+
+  const playClip = (blob) => {
+    const clip = new Audio(URL.createObjectURL(blob));
+    _assistantAudio = clip;                 // stopSpeaking() finds the live clip
+    return new Promise((resolve) => {
+      clip.onended = () => { URL.revokeObjectURL(clip.src); resolve(true); };
+      clip.onerror = () => resolve(true);
+      clip.play().catch(() => resolve(true));
+    });
+  };
+
+  try {
+    let pending = fetchTTS(parts[0]);
+    for (let i = 0; i < parts.length; i++) {
+      let blob;
+      try {
+        blob = await pending;               // first: its own render; after: while previous plays
+      } catch (err) {
+        console.info('Streamed voice render failed; finishing sentence-by-sentence.', err);
+        for (let j = i; j < parts.length; j++) {
+          if (gen !== _speakSeq) return true;
+          await speakPrompt(parts[j]);      // each call has its own browser-TTS fallback
+        }
+        return true;
+      }
+      if (gen !== _speakSeq) return true;   // superseded mid-pipeline — stop silently
+      pending = (i + 1 < parts.length) ? fetchTTS(parts[i + 1]) : null;   // render-while-play
+      await playClip(blob);
+    }
+    if (pending) await pending.catch(() => {});
+    return true;
+  } catch (err) {
+    console.info('Streamed voice pipeline aborted; using classic path.', err);
+    if (gen === _speakSeq) await speakPrompt(text);
+    return false;
+  }
+}

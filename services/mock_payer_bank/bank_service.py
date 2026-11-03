@@ -782,3 +782,163 @@ def reset():
     pin_attempts.clear()
     supabase_db.reset_payer_accounts()
     return {"success": True, "message": "Payer bank reset to initial state"}
+
+
+# ── Ops-console mirror (read-only over HTTP) ──────────────────────────────────
+# The Bank Operations Console runs in its OWN pod: it cannot open these SQLite
+# files across pods, and it never writes — so the console's per-bank reads are
+# served here verbatim over read-only endpoints. Same SQL, same shapes as the
+# console's local-filesystem path, additive only.
+@app.get("/ledger/ops/summary")
+def ops_summary():
+    """Trial balance + counts — what the console overview renders per bank."""
+    conn = get_db()
+    try:
+        accounts = L.trial_balance(conn)
+        by_type: dict[str, list] = {}
+        for a in accounts:
+            by_type.setdefault(a["account_type"], []).append(a)
+        pool = next((a for a in by_type.get("POOL", [])), None)
+        customer_total = sum(
+            a["balance_paise"] for a in accounts
+            if a["account_type"] in ("CUSTOMER", "MERCHANT")
+        )
+        return {
+            "bank_code": BANK_CODE,
+            "online": True,
+            "integrity": L.assert_books_balance(conn),
+            "accounts_by_type": by_type,
+            "pool_balance": L.to_rupees(pool["balance_paise"]) if pool else 0.0,
+            "customer_total": L.to_rupees(customer_total),
+            "entry_count": conn.execute("SELECT COUNT(*) c FROM journal_entries").fetchone()["c"],
+            "posting_count": conn.execute("SELECT COUNT(*) c FROM postings").fetchone()["c"],
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/ledger/ops/journal")
+def ops_journal(limit: int = 40):
+    """Recent journal entries with their DR/CR legs."""
+    conn = get_db()
+    try:
+        entries = []
+        for r in conn.execute(
+            """SELECT entry_id, txn_ref, rrn, event_type, reverses, narration, posted_at
+               FROM journal_entries ORDER BY posted_at DESC, rowid DESC LIMIT ?""",
+            (limit,),
+        ).fetchall():
+            legs = conn.execute(
+                """SELECT p.account_id, p.direction, p.amount_paise, la.account_type
+                   FROM postings p
+                   LEFT JOIN ledger_accounts la ON la.account_id = p.account_id
+                   WHERE p.entry_id = ? ORDER BY p.direction DESC, p.posting_id""",
+                (r["entry_id"],),
+            ).fetchall()
+            dr = sum(x["amount_paise"] for x in legs if x["direction"] == "DR")
+            cr = sum(x["amount_paise"] for x in legs if x["direction"] == "CR")
+            entries.append({
+                "bank_code": BANK_CODE,
+                "entry_id": r["entry_id"], "txn_ref": r["txn_ref"], "rrn": r["rrn"],
+                "event_type": r["event_type"], "reverses": r["reverses"],
+                "narration": r["narration"], "posted_at": r["posted_at"],
+                "balanced": dr == cr, "amount": L.to_rupees(dr),
+                "legs": [
+                    {"account_id": x["account_id"], "account_type": x["account_type"],
+                     "direction": x["direction"], "amount": L.to_rupees(x["amount_paise"])}
+                    for x in legs
+                ],
+            })
+        return {"entries": entries}
+    finally:
+        conn.close()
+
+
+@app.get("/ledger/ops/trace/{txn_ref}")
+def ops_trace(txn_ref: str):
+    """Every posting on THIS bank's books for one transaction."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT je.entry_id, je.event_type, je.reverses, je.narration, je.posted_at,
+                      p.account_id, p.direction, p.amount_paise, la.account_type
+               FROM journal_entries je
+               JOIN postings p ON p.entry_id = je.entry_id
+               LEFT JOIN ledger_accounts la ON la.account_id = p.account_id
+               WHERE je.txn_ref = ?
+               ORDER BY je.posted_at, p.posting_id""",
+            (txn_ref,),
+        ).fetchall()
+        if not rows:
+            raise HTTPException(404, f"No journal entries for txn_ref {txn_ref}")
+        grouped: dict[str, dict] = {}
+        for r in rows:
+            e = grouped.setdefault(r["entry_id"], {
+                "entry_id": r["entry_id"], "event_type": r["event_type"],
+                "reverses": r["reverses"], "narration": r["narration"],
+                "posted_at": r["posted_at"], "legs": [],
+            })
+            e["legs"].append({
+                "account_id": r["account_id"], "account_type": r["account_type"],
+                "direction": r["direction"], "amount": L.to_rupees(r["amount_paise"]),
+            })
+        txn = conn.execute(
+            "SELECT status, amount, timestamp, failure_reason, settlement_batch_id "
+            "FROM transactions WHERE txn_id=?", (txn_ref,)
+        ).fetchone()
+        return {
+            "bank_code": BANK_CODE,
+            "entries": list(grouped.values()),
+            "transaction_row": dict(txn) if txn else None,
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/ledger/ops/holds")
+def ops_holds():
+    """Active earmarks, most recent first."""
+    conn = get_db()
+    try:
+        return {"holds": [
+            {
+                "bank_code": BANK_CODE, "hold_id": r["hold_id"], "account_id": r["account_id"],
+                "txn_ref": r["txn_ref"], "amount": L.to_rupees(r["amount_paise"]),
+                "status": r["status"], "created_at": r["created_at"], "expires_at": r["expires_at"],
+            }
+            for r in conn.execute(
+                "SELECT hold_id, account_id, txn_ref, amount_paise, status, created_at, expires_at "
+                "FROM holds ORDER BY created_at DESC LIMIT 25"
+            ).fetchall()
+        ]}
+    finally:
+        conn.close()
+
+
+@app.get("/ledger/ops/statement/{account_id}")
+def ops_console_statement(account_id: str):
+    """Every posting touching one account — the console's statement view."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT je.entry_id, je.txn_ref, je.event_type, je.reverses,
+                      je.narration, je.posted_at, p.direction, p.amount_paise
+               FROM postings p JOIN journal_entries je ON je.entry_id = p.entry_id
+               WHERE p.account_id = ? ORDER BY je.posted_at, p.posting_id""",
+            (account_id,),
+        ).fetchall()
+        running = 0
+        out = []
+        for r in rows:
+            running += r["amount_paise"] if r["direction"] == "CR" else -r["amount_paise"]
+            out.append({
+                "entry_id": r["entry_id"], "txn_ref": r["txn_ref"],
+                "event_type": r["event_type"], "reverses": r["reverses"],
+                "narration": r["narration"], "posted_at": r["posted_at"],
+                "direction": r["direction"], "amount": L.to_rupees(r["amount_paise"]),
+                "running_balance": L.to_rupees(running),
+            })
+        return {"account_id": account_id, "entries": out,
+                "closing_balance": L.to_rupees(running)}
+    finally:
+        conn.close()

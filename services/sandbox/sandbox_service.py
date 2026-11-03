@@ -21,7 +21,7 @@ from sandbox_worker import run as _worker_run, LOKI_URL as _WORKER_LOKI_URL
 
 LIMIT_CODE_BYTES = 20000
 DEFAULT_TIMEOUT_S = 5.0
-MAX_TIMEOUT_S = 9.0
+MAX_TIMEOUT_S = 20.0
 
 app = FastAPI(title="Sable code-sandbox", version="1.0.0")
 

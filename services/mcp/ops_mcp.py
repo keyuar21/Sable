@@ -46,7 +46,7 @@ async def call_tool(name: str, args: dict, ctx: dict):
         return {"error": "code too long (20k cap)"}
     async with httpx.AsyncClient(timeout=15.0) as cli:
         try:
-            r = await cli.post(f"{SANDBOX_URL}/execute", json={"code": code, "timeout_s": 5.0})
+            r = await cli.post(f"{SANDBOX_URL}/execute", json={"code": code, "timeout_s": 15.0})
             r.raise_for_status()
         except httpx.HTTPError as e:
             return {"error": f"sandbox unreachable: {e}"}

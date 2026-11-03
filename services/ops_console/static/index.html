@@ -364,6 +364,14 @@ setInterval(refresh, 2500);
 // and executes generated Python inside the locked ai-sandbox pod (Loki-only
 // egress). May take 15-60s: it is a full reasoning loop, hence the progress
 // indication and the button disable.
+// The console usually runs on its own origin (port-forward :5010); the agent
+// route only exists under the app's ingress host. Same-origin already works
+// if the console is ever routed through it — otherwise cross-call the app's
+// primary origin (the agent opens CORS for exactly this POST shape).
+const AGENT_BASE =
+  (location.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname))
+    ? ''
+    : 'https://upi-sim.local';
 document.getElementById('ops-ask-btn').onclick = async () => {
   const btn    = document.getElementById('ops-ask-btn');
   const out    = document.getElementById('ops-answer');
@@ -371,13 +379,37 @@ document.getElementById('ops-ask-btn').onclick = async () => {
   const token  = document.getElementById('ops-token').value.trim();
   if (!prompt) return;
   out.style.display = 'block';
-  out.textContent = 'Agent is reasoning (writes code, runs it in the sandbox, reads Loki)…';
+  out.textContent = 'Collecting transaction facts, then agent is reasoning (writes code, runs it in the sandbox, reads Loki)…';
   btn.disabled = true;
   try {
-    const r = await fetch('/agent/ops', {
+    // The ledger only records completed legs; a failed attempt is invisible
+    // there. The PSP store is the authoritative outcome list — hand it to the
+    // agent verbatim so it never has to infer transaction results from logs.
+    let facts;
+    try {
+      const t = await (await fetch('/api/transactions?limit=25')).json();
+      const rows = (t.transactions || []).map(x => {
+        // Age is computed here, deterministically, so the agent can never call
+        // a 27-day-old failure "recent".
+        const ms = Date.now() - Date.parse(x.created_at);
+        const age = !isFinite(ms) || ms < 0 ? 'unknown'
+          : ms < 3600000 ? Math.round(ms / 60000) + 'm'
+          : ms < 172800000 ? (ms / 3600000).toFixed(1) + 'h'
+          : Math.round(ms / 86400000) + 'd';
+        return `${x.txn_id} | ${x.status} | ${x.amount} | ${x.payer_vpa} -> ${x.payee_vpa} | ${x.created_at} | age ${age}` +
+          (x.error ? ` | error: ${x.error}` : '');
+      });
+      facts = rows.length
+        ? '[LEDGER FACTS — authoritative PSP transaction store, newest first, generated ' +
+          new Date().toISOString() + ' — do not recompute]\n' + rows.join('\n') + '\n[/LEDGER FACTS]\n\n'
+        : '[LEDGER FACTS — the PSP has no transactions on record]\n\n';
+    } catch (e) {
+      facts = '[LEDGER FACTS — unavailable: ' + e.message + ']\n\n';
+    }
+    const r = await fetch(AGENT_BASE + '/agent/ops', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
-      body: JSON.stringify({ text: prompt }),
+      body: JSON.stringify({ text: facts + 'Question: ' + prompt }),
     });
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 160));
     const d = await r.json();
