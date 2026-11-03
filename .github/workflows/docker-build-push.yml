@@ -1,0 +1,126 @@
+name: Build and Push Docker Images to Docker Hub
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: 'Optional custom tag (e.g. 1.0.0 or v1.0.0)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKERHUB_REPO: keyuar/sable
+
+jobs:
+  build-and-push:
+    name: Build & Push ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: switch
+            image: upi-switch
+            dockerfile: services/mock_switch/Dockerfile
+            context: .
+          - service: auth
+            image: upi-auth
+            dockerfile: services/mock_auth/Dockerfile
+            context: .
+          - service: payer-bank
+            image: upi-payer-bank
+            dockerfile: services/mock_payer_bank/Dockerfile
+            context: .
+          - service: payee-bank
+            image: upi-payee-bank
+            dockerfile: services/mock_payee_bank/Dockerfile
+            context: .
+          - service: psp
+            image: upi-psp
+            dockerfile: services/mock_psp/Dockerfile
+            context: .
+          - service: recharge
+            image: upi-recharge
+            dockerfile: services/mock_recharge/Dockerfile
+            context: .
+          - service: ops-console
+            image: upi-ops-console
+            dockerfile: services/ops_console/Dockerfile
+            context: .
+          - service: frontend
+            image: upi-frontend
+            dockerfile: frontend/Dockerfile
+            context: frontend
+          - service: agent
+            image: upi-agent
+            dockerfile: services/agent/Dockerfile
+            context: .
+          - service: sandbox
+            image: upi-code-sandbox
+            dockerfile: services/sandbox/Dockerfile
+            context: .
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        run: |
+          REPO="${{ env.DOCKERHUB_REPO }}"
+          SHA_SHORT="${GITHUB_SHA::7}"
+
+          # Tagging strategy for single repo (keyuar/sable):
+          # 1. <service>-latest & <service>-<sha>
+          # 2. upi-<service>-latest & upi-<service>-<sha>
+          TAGS="${REPO}:${{ matrix.service }}-latest"
+          TAGS="${TAGS},${REPO}:${{ matrix.service }}-${SHA_SHORT}"
+          TAGS="${TAGS},${REPO}:${{ matrix.image }}-latest"
+          TAGS="${TAGS},${REPO}:${{ matrix.image }}-${SHA_SHORT}"
+
+          if [ -n "${{ github.event.inputs.custom_tag }}" ]; then
+            CUSTOM_TAG="${{ github.event.inputs.custom_tag }}"
+            TAGS="${TAGS},${REPO}:${{ matrix.service }}-${CUSTOM_TAG}"
+            TAGS="${TAGS},${REPO}:${{ matrix.image }}-${CUSTOM_TAG}"
+          fi
+
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Step Summary
+        run: |
+          echo "###  Built and Pushed \`${{ matrix.image }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service:** \`${{ matrix.service }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Context:** \`${{ matrix.context }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dockerfile:** \`${{ matrix.dockerfile }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pushed Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`${{ env.DOCKERHUB_REPO }}:${{ matrix.service }}-latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`${{ env.DOCKERHUB_REPO }}:${{ matrix.service }}-${{ steps.meta.outputs.sha_short }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`${{ env.DOCKERHUB_REPO }}:${{ matrix.image }}-latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`${{ env.DOCKERHUB_REPO }}:${{ matrix.image }}-${{ steps.meta.outputs.sha_short }}\`" >> $GITHUB_STEP_SUMMARY
