@@ -1,0 +1,202 @@
+# Build every service image and push it to Docker Hub on every push to master.
+#
+# Tag layout (all images share ONE repository, keyuar/sable — Docker Hub's free
+# plan allows a single private repo, and this stack has ten images):
+#
+#   keyuar/sable:upi-ops-console-latest      <- used by the manual helm commands
+#   keyuar/sable:ops-console-latest          <- used by deploy/azure/deploy-aks.sh
+#   keyuar/sable:upi-ops-console-1.0.6       <- pinned to the values-file tag
+#   keyuar/sable:upi-ops-console-sha-abc1234 <- immutable, matches a commit
+#
+# The versioned tag is resolved exactly like deploy/helm/kind-up.sh: the
+# per-service values file's `tag:` if present, otherwise the chart's appVersion.
+# Bump that tag when you change a service — the same rule keeps kind and AKS in
+# sync.
+#
+# Required repository secrets:
+#   DOCKERHUB_USERNAME  keyuar
+#   DOCKERHUB_TOKEN     a Docker Hub access token (Account settings -> Security)
+#
+# The repo is private, so the cluster needs a pull secret once:
+#   kubectl -n upi create secret docker-registry dockerhub \
+#     --docker-server=https://index.docker.io/v1/ \
+#     --docker-username=keyuar --docker-password=<token>
+#   (add imagePullSecrets: [{name: dockerhub}] to the values, or set it globally)
+
+name: build-and-push
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Target platforms (comma separated)"
+        type: string
+        default: "linux/amd64,linux/arm64"
+      push:
+        description: "Push the built images to Docker Hub"
+        type: boolean
+        default: true
+
+concurrency:
+  # A newer push to the same branch supersedes the one still building.
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: docker.io
+  NAMESPACE: keyuar
+  REPOSITORY: sable
+  # AKS nodes are amd64; Apple Silicon kind is arm64. Building both keeps one
+  # image usable in either place. Override per run with the `platforms` input
+  # (e.g. "linux/amd64" to halve the build time).
+  PLATFORMS: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
+
+jobs:
+  # ── Validate first: a broken values file must not reach the registry ────────
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Render every release with its values file
+        run: |
+          set -euo pipefail
+          for v in deploy/helm/values/*.yaml; do
+            echo "==> helm template $(basename "$v" .yaml)"
+            helm template "upi-$(basename "$v" .yaml)" deploy/helm/upi-service -f "$v" > /dev/null
+          done
+
+      - name: Python services compile
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            services/ops_console/ops_service.py \
+            services/agent/agent_service.py \
+            services/sandbox/sandbox_service.py \
+            services/agent/llm_client.py \
+            services/mcp/customer_mcp.py \
+            services/mcp/ops_mcp.py
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # image = Docker tag prefix (upi-*), values = the file in
+          # deploy/helm/values/ (also the short alias used by deploy-aks.sh).
+          - { image: upi-switch,      values: switch,      dockerfile: services/mock_switch/Dockerfile,      context: . }
+          - { image: upi-auth,        values: auth,        dockerfile: services/mock_auth/Dockerfile,        context: ., heavy: true }
+          - { image: upi-payer-bank,  values: payer-bank,  dockerfile: services/mock_payer_bank/Dockerfile,  context: . }
+          - { image: upi-payee-bank,  values: payee-bank,  dockerfile: services/mock_payee_bank/Dockerfile,  context: . }
+          - { image: upi-psp,         values: psp,         dockerfile: services/mock_psp/Dockerfile,         context: . }
+          - { image: upi-recharge,    values: recharge,    dockerfile: services/mock_recharge/Dockerfile,    context: . }
+          - { image: upi-ops-console, values: ops-console, dockerfile: services/ops_console/Dockerfile,      context: . }
+          - { image: upi-agent,       values: agent,       dockerfile: services/agent/Dockerfile,            context: . }
+          - { image: upi-code-sandbox, values: sandbox,    dockerfile: services/sandbox/Dockerfile,          context: . }
+          - { image: upi-frontend,    values: frontend,    dockerfile: frontend/Dockerfile,                 context: frontend }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # torch + speechbrain under QEMU needs the disk (the runner ships ~14 GB).
+      - name: Free disk space (heavy image)
+        if: matrix.heavy
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Resolve version (same rule as kind-up.sh)
+        id: meta
+        run: |
+          set -euo pipefail
+          vfile="deploy/helm/values/${{ matrix.values }}.yaml"
+          appver="$(awk '$1 == "appVersion:" { gsub(/"/, "", $2); print $2 }' deploy/helm/upi-service/Chart.yaml)"
+          version="$(grep -m1 -E '^[[:space:]]*tag:' "$vfile" 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
+          version="${version:-$appver}"
+          short="${GITHUB_SHA:0:7}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "short=$short" >> "$GITHUB_OUTPUT"
+          echo "${{ matrix.image }} -> version $version, commit $short"
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' || inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name == 'push' || inputs.push }}
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPOSITORY }}:${{ matrix.image }}-latest
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPOSITORY }}:${{ matrix.values }}-latest
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPOSITORY }}:${{ matrix.image }}-${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPOSITORY }}:${{ matrix.image }}-sha-${{ steps.meta.outputs.short }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # ── One readable summary instead of ten logs ───────────────────────────────
+  summary:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write image summary
+        run: |
+          {
+            echo "### Images pushed to \`${{ env.NAMESPACE }}/${{ env.REPOSITORY }}\`"
+            echo
+            echo "| service | deploy tag (latest) | pinned tag |"
+            echo "| --- | --- | --- |"
+            for s in switch auth payer-bank payee-bank psp recharge ops-console agent code-sandbox frontend; do
+              echo "| $s | \`upi-$s-latest\` | \`upi-$s-<version>\` |"
+            done
+            echo
+            echo "AKS pull helper (private repo):"
+            echo '```'
+            echo "kubectl -n upi create secret docker-registry dockerhub \\"
+            echo "  --docker-server=https://index.docker.io/v1/ \\"
+            echo "  --docker-username=${{ secrets.DOCKERHUB_USERNAME }} \\"
+            echo "  --docker-password=<access-token>"
+            echo '```'
+            echo
+            echo "After pushing a new \`-latest\`, the pods must re-pull:"
+            echo '```'
+            echo "kubectl -n upi rollout restart deploy/upi-ops-console"
+            echo "kubectl -n upi rollout status  deploy/upi-ops-console"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
