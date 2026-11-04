@@ -19,3 +19,7 @@ env/
 .idea/
 .vscode/
 *.log
+
+# Local SQLite journals / WAL sidecars from running services on this host.
+*.db-wal
+*.db-shm

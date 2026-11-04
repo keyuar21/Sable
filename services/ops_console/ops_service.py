@@ -14,17 +14,19 @@ Port 5010. (5006 is reserved for the payee PSP in the architecture spec.)
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import secrets
 import sqlite3
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -60,6 +62,41 @@ PSP_URL = os.getenv("PSP_URL", "http://upi-psp.upi.svc:5001")
 
 app = FastAPI(title="Bank Operations Console", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Routes live on a router so the whole console can be mounted twice: at "/"
+# (port-forward, kind) and at "/ops" (behind an ingress on a shared hostname).
+# The ingress rule is a plain Prefix match with NO rewrite, so those paths are
+# what the browser actually asks for.
+router = APIRouter()
+
+# The console shows every balance and can trigger the ops agent, so it gates
+# itself instead of trusting the ingress. Basic auth works on any ingress
+# controller (some ignore the nginx auth annotations). Browsers cache the
+# credentials for the origin after the first prompt, so the page's own fetch()
+# calls keep working.
+OPS_BASIC_USER = os.getenv("OPS_BASIC_USER", "admin")
+OPS_BASIC_PASS = os.getenv("OPS_BASIC_PASS", "admin")
+
+
+@app.middleware("http")
+async def _basic_auth(request: Request, call_next):
+    # k8s probes must stay unauthenticated or the pod would never go Ready.
+    if request.url.path in ("/health", "/ops/health"):
+        return await call_next(request)
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("basic "):
+        try:
+            user, _, password = base64.b64decode(header[6:]).decode().partition(":")
+        except Exception:
+            user = password = ""
+        if secrets.compare_digest(user, OPS_BASIC_USER) and \
+                secrets.compare_digest(password, OPS_BASIC_PASS):
+            return await call_next(request)
+    return JSONResponse(
+        {"detail": "authentication required"},
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="Sable Ops Console", charset="UTF-8"'},
+    )
 
 
 def open_ro(bank_code: str) -> sqlite3.Connection:
@@ -109,12 +146,12 @@ def _bank_read(code: str, route: str, query: dict | None = None):
 
 # ── API ──────────────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@router.get("/health")
 def health():
     return {"status": "ok", "service": "Ops Console", "port": 5010}
 
 
-@app.get("/api/overview")
+@router.get("/api/overview")
 def overview():
     """Per-bank trial balance plus the cross-bank conservation check."""
     out = {"banks": [], "system": {}}
@@ -191,7 +228,7 @@ def overview():
     return out
 
 
-@app.get("/api/journal")
+@router.get("/api/journal")
 def journal(limit: int = 40):
     """Recent journal entries from both banks, each with its DR/CR legs.
 
@@ -253,7 +290,7 @@ def journal(limit: int = 40):
     return {"entries": entries[:limit]}
 
 
-@app.get("/api/trace/{txn_ref}")
+@router.get("/api/trace/{txn_ref}")
 def trace(txn_ref: str):
     """Follow one transaction across BOTH banks.
 
@@ -320,7 +357,7 @@ def trace(txn_ref: str):
     return {"txn_ref": txn_ref, "banks": legs_by_bank}
 
 
-@app.get("/api/statement/{bank_code}/{vpa}")
+@router.get("/api/statement/{bank_code}/{vpa}")
 def statement(bank_code: str, vpa: str):
     """One account's full statement, straight from the postings table."""
     account_id = f"{bank_code}:{vpa}"
@@ -355,7 +392,7 @@ def statement(bank_code: str, vpa: str):
         conn.close()
 
 
-@app.get("/api/holds")
+@router.get("/api/holds")
 def holds():
     """Active earmarks — the gap between ledger and available balance."""
     out = []
@@ -384,7 +421,7 @@ def holds():
     return {"holds": out}
 
 
-@app.get("/api/transactions")
+@router.get("/api/transactions")
 def transactions(limit: int = 25):
     """Proxy PSP's transaction store (read-only).
 
@@ -407,10 +444,23 @@ def transactions(limit: int = 25):
 
 
 # ── Static page ──────────────────────────────────────────────────────────────
+# Mounted twice for the same reason as the API: "/" for a port-forward and
+# "/ops/..." when the console is published under a subpath. The page derives
+# that prefix from the address bar, so its fetch() calls follow automatically.
 
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
-
-
-@app.get("/")
+@router.get("/")
 def index():
     return FileResponse(os.path.join(STATIC, "index.html"))
+
+
+app.include_router(router)                     # /            and /api/...
+app.include_router(router, prefix="/ops")      # /ops         and /ops/api/...
+
+
+@app.get("/ops/", include_in_schema=False)
+def index_trailing_slash():
+    return FileResponse(os.path.join(STATIC, "index.html"))
+
+
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.mount("/ops/static", StaticFiles(directory=STATIC), name="static-ops")

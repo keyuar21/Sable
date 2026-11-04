@@ -3,6 +3,9 @@
 image:
   repository: upi-ops-console
   tag: "1.0.6"   # ledger via bank HTTP mirrors + agent cross-origin call
+  # The AKS deploy script deploys the moving "<image>-latest" tag, so the node
+  # must re-check the registry; IfNotPresent would keep a stale cached layer.
+  pullPolicy: Always
 
 service:
   name: ops-console
@@ -32,10 +35,37 @@ app:
         sqlite_path: /data/payee/payee_ledger.db
     refresh_secs: 2.5
 
-# The console exposes every account balance and has no auth of its own.
-# Keep it off any public ingress, or put an auth proxy in front.
+# HTTP Basic enforced by the console app itself (every route except /health),
+# so it survives any ingress controller. Change the password before exposing
+# this beyond a demo:  --set env.OPS_BASIC_PASS='...'
+env:
+  OPS_BASIC_USER: admin
+  OPS_BASIC_PASS: admin
+
 ingress:
-  enabled: false
+  enabled: true
+  className: nginx
+  annotations:
+    # Diagnose can take ~60s (LLM rounds + sandbox). nginx's default 60s
+    # proxy_read_timeout cuts the request at exactly the boundary.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "180"
+  hosts:
+    # No host on purpose: the rule matches every hostname, so /ops works on
+    # upi-sim.local (kind) and on a bare public IP (AKS) without edits.
+    #
+    # PLAIN PREFIX, NO REWRITE. The console serves /ops itself (the app mounts
+    # every route twice), and browsers ask for /ops/api/... . The old
+    # regex+rewrite form depended on nginx-only annotations and, with
+    # ingress.enabled=false, /ops fell through to the frontend's "/" rule —
+    # which is why the customer app appeared instead of this console.
+    - paths:
+        - path: /ops
+          pathType: Prefix
+  tls:
+    - hosts:
+        - upi-sim.local
+      secretName: upi-sim-tls
 
 resources:
   requests: { cpu: 50m, memory: 128Mi }
