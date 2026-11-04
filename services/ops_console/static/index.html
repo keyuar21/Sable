@@ -210,7 +210,11 @@
 </footer>
 
 <script>
-const API = location.origin;
+// The console runs both from a port-forward (path "/") and from an ingress
+// subpath (path "/ops"). Derive the prefix from the address bar so every API
+// call stays on the same origin+path — no hardcoded "/api" that would land on
+// the customer app when the console lives under /ops.
+const API = location.pathname.startsWith('/ops') ? '/ops' : '';
 const money = n => '₹' + Number(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const short = t => (t || '').slice(11, 19);
@@ -368,10 +372,13 @@ setInterval(refresh, 2500);
 // route only exists under the app's ingress host. Same-origin already works
 // if the console is ever routed through it — otherwise cross-call the app's
 // primary origin (the agent opens CORS for exactly this POST shape).
-const AGENT_BASE =
-  (location.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname))
-    ? ''
-    : 'https://upi-sim.local';
+// The console usually runs on its own origin (port-forward :5010); the agent
+// route only exists under the app's ingress. On a real deployment (AKS, bare
+// IP, any https host) same-origin is right — the agent ingress owns /agent on
+// the very same host. Only a localhost port-forward needs the kind hostname.
+const AGENT_BASE = ['localhost', '127.0.0.1'].includes(location.hostname)
+  ? 'https://upi-sim.local'
+  : '';
 document.getElementById('ops-ask-btn').onclick = async () => {
   const btn    = document.getElementById('ops-ask-btn');
   const out    = document.getElementById('ops-answer');
@@ -387,7 +394,7 @@ document.getElementById('ops-ask-btn').onclick = async () => {
     // agent verbatim so it never has to infer transaction results from logs.
     let facts;
     try {
-      const t = await (await fetch('/api/transactions?limit=25')).json();
+      const t = await (await fetch(API + '/api/transactions?limit=25')).json();
       const rows = (t.transactions || []).map(x => {
         // Age is computed here, deterministically, so the agent can never call
         // a 27-day-old failure "recent".
