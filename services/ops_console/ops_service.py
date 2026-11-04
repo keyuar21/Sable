@@ -14,19 +14,19 @@ Port 5010. (5006 is reserved for the payee PSP in the architecture spec.)
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import secrets
-import time
 import sqlite3
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from fastapi import APIRouter, Form, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -70,82 +70,32 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 router = APIRouter()
 
 # The console shows every balance and can trigger the ops agent, so it gates
-# itself instead of trusting the ingress. Basic auth works on any ingress
-# controller (some ignore the nginx auth annotations). Browsers cache the
-# credentials for the origin after the first prompt, so the page's own fetch()
-# calls keep working.
+# itself instead of trusting the ingress. Native HTTP Basic Auth works on any
+# ingress controller and the browser handles it per-origin, so on a bare IP
+# there are no credential-retry loops like a cookie session can cause.
 OPS_BASIC_USER = os.getenv("OPS_BASIC_USER", "admin")
 OPS_BASIC_PASS = os.getenv("OPS_BASIC_PASS", "admin")
 
-# Signed-cookie session. A cookie is friendlier on a bare-IP deployment than
-# native Basic auth: browsers don't enter credential-retry loops for it.
-SESSION_COOKIE = "sable_ops_session"
-SESSION_TTL_S = 12 * 60 * 60
-
-def _session_token() -> str:
-    issued = int(time.time())
-    signature = secrets.token_hex(32)
-    return f"{issued}.{signature}"
-
-
-def _valid_session(value: str | None) -> bool:
-    if not value:
-        return False
-    try:
-        issued = int(value.split(".", 1)[0])
-    except ValueError:
-        return False
-    return time.time() - issued <= SESSION_TTL_S
-
-
-def _console_prefix(path: str) -> str:
-    return "/ops" if path == "/ops" or path.startswith("/ops/") else ""
-
-
-def _login_page(prefix: str) -> HTMLResponse:
-    return HTMLResponse(f"""
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ops Console sign in</title>
-<style>
-body{{font:16px system-ui;background:#0a0a0b;color:#f2efe9;display:grid;place-items:center;min-height:100vh;margin:0}}
-form{{width:min(92vw,360px);background:#131315;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:24px}}
-h1{{font-size:20px;margin:0 0 8px}}p{{color:#9b978e;margin:0 0 20px}}
-label{{display:block;font-size:13px;margin:12px 0 5px}}input{{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #333;background:#1a1a1d;color:#fff}}
-button{{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:#e84743;color:#fff;font-weight:700}}a{{color:#7aa7ff}}
-</style></head><body><form method="post" action="{prefix}/login">
-<h1>Bank Operations Console</h1><p>Operator sign in</p>
-<label>Username</label><input name="username" autocomplete="username" required autofocus>
-<label>Password</label><input name="password" type="password" autocomplete="current-password" required>
-<button type="submit">Sign in</button></form></body></html>
-""")
-
 
 @app.middleware("http")
-async def _session_auth(request: Request, call_next):
-    # k8s probes and the login page itself must stay unauthenticated.
-    if request.url.path in ("/health", "/ops/health", "/login", "/ops/login"):
+async def _basic_auth(request: Request, call_next):
+    # k8s probes must stay unauthenticated or the pod would never go Ready.
+    if request.url.path in ("/health", "/ops/health"):
         return await call_next(request)
-
-    if _valid_session(request.cookies.get(SESSION_COOKIE)):
-        return await call_next(request)
-
-    prefix = _console_prefix(request.url.path)
-    if request.url.path.startswith(f"{prefix}/api/"):
-        return JSONResponse({"detail": "authentication required"}, status_code=401)
-    return _login_page(prefix)
-
-
-@router.post("/login", include_in_schema=False)
-async def login(username: str = Form(default=""), password: str = Form(default="")):
-    if not (secrets.compare_digest(username, OPS_BASIC_USER)
-            and secrets.compare_digest(password, OPS_BASIC_PASS)):
-        return HTMLResponse("<h1>Invalid credentials</h1><p><a href='./login'>Try again</a></p>", status_code=401)
-    # This router is included twice; redirect relative to the login request.
-    destination = "/"
-    response = RedirectResponse(destination)
-    response.set_cookie(SESSION_COOKIE, _session_token(), httponly=True, samesite="lax", max_age=SESSION_TTL_S)
-    return response
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("basic "):
+        try:
+            user, _, password = base64.b64decode(header[6:]).decode().partition(":")
+        except Exception:
+            user = password = ""
+        if secrets.compare_digest(user, OPS_BASIC_USER) and \
+                secrets.compare_digest(password, OPS_BASIC_PASS):
+            return await call_next(request)
+    return JSONResponse(
+        {"detail": "authentication required"},
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="Sable Ops Console", charset="UTF-8"'},
+    )
 
 
 def open_ro(bank_code: str) -> sqlite3.Connection:
